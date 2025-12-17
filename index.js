@@ -1,12 +1,11 @@
 // ==================================================================
-// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT + OCR)
+// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT)
 // ==================================================================
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 
 console.log("🔄 [JS] Démarrage du système...");
 
-// Ajout de 'tesseract.js' pour la reconnaissance d'image
-const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv', 'tesseract.js'];
+const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv'];
 let needInstall = false;
 
 requiredPackages.forEach(pkg => {
@@ -127,7 +126,8 @@ function generateClientPayload(quizData) {
         style.textContent = \`
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
             * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(139,92,246,0.3); border-radius: 20px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; }
+            /* GUI: Transition uniquement sur opacité/transform pour éviter le lag de déplacement */
+            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(139,92,246,0.3); border-radius: 20px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: opacity 0.3s, transform 0.3s; display: flex; flex-direction: column; }
             .gui.h { opacity: 0; pointer-events: none; transform: scale(0.8); }
             .head { padding: 15px; background: linear-gradient(90deg, rgba(139,92,246,0.2), transparent); display: flex; justify-content: space-between; align-items: center; cursor: grab; border-bottom: 1px solid rgba(255,255,255,0.05); }
             .body { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
@@ -137,8 +137,9 @@ function generateClientPayload(quizData) {
             button { padding: 10px; border: none; border-radius: 8px; background: #2e2e36; color: #e0e0e0; font-weight: 600; font-size: 10px; cursor: pointer; transition: 0.2s; }
             button:hover { background: #3f3f46; color: white; }
             button.a { background: #7c3aed; color: white; box-shadow: 0 4px 15px rgba(124,58,237,0.4); }
-            .dock { position: fixed; bottom: 30px; left: 30px; width: 70px; height: 70px; cursor: pointer; z-index: 999999; transition: 0.4s; opacity: 0; transform: translateY(60px) rotate(180deg); filter: drop-shadow(0 0 15px rgba(139,92,246,0.4)); }
-            .dock.v { opacity: 1; transform: translateY(0) rotate(0deg); }
+            /* Planète: plus petite (50px) et pas de rotation initiale */
+            .dock { position: fixed; bottom: 30px; left: 30px; width: 50px; height: 50px; cursor: pointer; z-index: 999999; transition: 0.4s; opacity: 0; transform: translateY(60px); filter: drop-shadow(0 0 15px rgba(139,92,246,0.4)); }
+            .dock.v { opacity: 1; transform: translateY(0); }
             .dock:hover { transform: scale(1.15); }
             .toasts { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
             .t { background: rgba(15,15,20,0.95); color: #fff; padding: 8px 16px; border-radius: 30px; font-size: 11px; border: 1px solid rgba(139,92,246,0.3); backdrop-filter: blur(8px); }
@@ -163,7 +164,7 @@ function generateClientPayload(quizData) {
                             <input type="number" id="nd" class="num-input" value="250">
                         </div>
                     </div>
-                    <div><label>Opacité</label><input type="range" id="ro" min="0.1" max="1" step="0.1" value="1"></div>
+                    <div><label>Opacité Planète</label><input type="range" id="ro" min="0.1" max="1" step="0.1" value="1"></div>
                     <div class="grid">
                         <button id="ba">AUTO OFF</button>
                         <button id="bn" class="a">NOTIFS ON</button>
@@ -195,7 +196,9 @@ function generateClientPayload(quizData) {
         const sync = (v) => { _st.d = parseInt(v); $('#rd').value=v; $('#nd').value=v; };
         $('#rd').oninput = (e) => sync(e.target.value);
         $('#nd').oninput = (e) => sync(e.target.value);
-        $('#ro').oninput = (e) => g.style.opacity = e.target.value;
+        
+        // MODIF: L'opacité s'applique à la planète (p) et non au menu (g)
+        $('#ro').oninput = (e) => p.style.opacity = e.target.value;
         
         $('#ba').onclick = function() { _st.a=!_st.a; this.innerText=_st.a?"AUTO ON":"AUTO OFF"; this.classList.toggle('a'); notif("Auto-Answer: " + (_st.a?"ON":"OFF")); };
         $('#bn').onclick = function() { _st.n=!_st.n; this.classList.toggle('a'); };
@@ -236,169 +239,104 @@ function generateClientPayload(quizData) {
     `;
 }
 
-// --- FONCTION PRINCIPALE DE GÉNÉRATION D'EMBED ---
-// Cette fonction gère la récupération des données et la création de l'embed final
-async function processKahootRequest(targetId, interaction) {
-    try {
-        const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${targetId}`);
-        const qs = res.data.questions.map(q => {
-            const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
-            const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
-            const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
-            let cleanA = "img"; 
-            if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
-            return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
-        });
-
-        const id = crypto.randomUUID();
-        scriptsCache.set(id, {data:qs, title:res.data.title});
-        
-        let url = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}/copy/${id}` : `http://localhost:${port}/copy/${id}`;
-        
-        // --- LOGIQUE PAGINATION & EMBED ---
-        let currentIndex = 0;
-
-        const generateEmbed = (idx) => {
-            const q = qs[idx];
-            const total = qs.length;
-            let answerText = "";
-            let colorHex = '#8b5cf6';
-            let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; 
-
-            if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
-                const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
-                if (q.i >= 0 && q.i < shapes.length) {
-                    answerText = `**${shapes[q.i]}**\n*${q.a}*`;
-                }
-                if (q.i === 0) colorHex = '#ff3355';
-                if (q.i === 1) colorHex = '#45a3e5';
-                if (q.i === 2) colorHex = '#ffc00a';
-                if (q.i === 3) colorHex = '#66bf39';
-            } 
-            else if (q.type === 'true_false') {
-                imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; 
-                if (q.a === 'true' || q.a === 'vrai') {
-                    answerText = "🔷 **VRAI** (Bleu)";
-                    colorHex = '#45a3e5';
-                } else {
-                    answerText = "🔺 **FAUX** (Rouge)";
-                    colorHex = '#ff3355';
-                }
-            } else {
-                answerText = `**Réponse :** ${q.a}`;
-            }
-
-            return new EmbedBuilder()
-                .setTitle(`Question ${idx + 1} / ${total}`)
-                .setDescription(`## ${q.q}\n\n${answerText}`)
-                .setColor(colorHex)
-                .setImage(imgUrl)
-                .setFooter({ text: "Utilise les boutons pour naviguer" });
-        };
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('prev').setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
-            new ButtonBuilder().setCustomId('next').setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(qs.length <= 1),
-            new ButtonBuilder().setLabel('TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
-        );
-
-        const msg = await interaction.editReply({ embeds: [generateEmbed(0)], components: [row] });
-
-        const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
-
-        collector.on('collect', async i => {
-            if (i.user.id !== interaction.user.id) return i.reply({content:'Pas touche !', ephemeral:true});
-            
-            if (i.customId === 'prev') currentIndex--;
-            if (i.customId === 'next') currentIndex++;
-
-            if(currentIndex < 0) currentIndex = 0;
-            if(currentIndex >= qs.length) currentIndex = qs.length - 1;
-
-            row.components[0].setDisabled(currentIndex === 0);
-            row.components[1].setDisabled(currentIndex === qs.length - 1);
-
-            await i.update({ embeds: [generateEmbed(currentIndex)], components: [row] });
-        });
-        
-    } catch(e) {
-        console.error(e);
-        interaction.editReply({content: "❌ UUID Invalide ou Quiz privé.", embeds: [], components: []});
-    }
-}
-
-// --- BOT DISCORD ---
-const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-    partials: [Partials.Channel]
-});
-
-// Ajout de la commande /ping
-const commands = [
-    new SlashCommandBuilder()
-        .setName('kahoot')
-        .setDescription('Hack Menu (UUID Only)')
-        .addStringOption(o => o.setName('uuid').setDescription('UUID du quiz').setRequired(true)),
-    new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Vérifier la connexion du bot')
-].map(c => c.toJSON());
-
+// --- BOT DISCORD (PAGINATION ET IMAGES VRAI/FAUX) ---
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true))].map(c=>c.toJSON());
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
-    try { await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }); } 
-    catch (e) { console.error('Erreur Commandes', e); }
-})();
+(async()=>{try{await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commands})}catch(e){}})();
 
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'ping') {
-        return interaction.reply({ 
-            content: `🏓 **Pong !**\n✅ Bot en ligne.\n⚡ Latence : ${Date.now() - interaction.createdTimestamp}ms\nAPI : ${Math.round(client.ws.ping)}ms`, 
-            ephemeral: true 
-        });
-    }
-
-    if (interaction.commandName === 'kahoot') {
+    if (interaction.isChatInputCommand()) {
         const uuid = interaction.options.getString('uuid');
         await interaction.deferReply({ ephemeral: true });
-        // Appel de la logique principale
-        processKahootRequest(uuid, interaction);
-    }
-});
 
-// --- ECOUTEUR D'IMAGES (OCR) ---
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-
-    // Vérifie s'il y a une image attachée
-    if (message.attachments.size > 0) {
-        const attachment = message.attachments.first();
-        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+        try {
+            const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
             
-            // Notification de prise en charge
-            const replyMsg = await message.reply("🔍 Analyse de l'image en cours...");
+            const qs = res.data.questions.map(q => {
+                const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
+                const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
+                const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
+                let cleanA = "img"; 
+                if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
+                return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
+            });
 
-            try {
-                // OCR via Tesseract
-                const { data: { text } } = await Tesseract.recognize(attachment.url, 'eng');
-                
-                // Regex pour trouver un UUID Kahoot
-                const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-                const match = text.match(uuidRegex);
+            const id = crypto.randomUUID();
+            scriptsCache.set(id, {data:qs, title:res.data.title});
+            
+            // Détection dynamique de l'URL pour Render / Replit / Local
+            const host = process.env.RENDER_EXTERNAL_URL || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${port}`);
+            const url = `${host}/copy/${id}`;
+            
+            let currentIndex = 0;
 
-                if (match) {
-                    await replyMsg.edit(`✅ **UUID Détecté !**\n\n\`${match[0]}\`\n\nCopie-le et lance la commande : \`/kahoot uuid:${match[0]}\``);
+            const generateEmbed = (idx) => {
+                const q = qs[idx];
+                const total = qs.length;
+                let answerText = "";
+                let colorHex = '#8b5cf6';
+                let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; // Image Quiz par défaut
+
+                if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
+                    const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
+                    if (q.i >= 0 && q.i < shapes.length) {
+                        answerText = `**${shapes[q.i]}**\n*${q.a}*`;
+                    }
+                    if (q.i === 0) colorHex = '#ff3355';
+                    if (q.i === 1) colorHex = '#45a3e5';
+                    if (q.i === 2) colorHex = '#ffc00a';
+                    if (q.i === 3) colorHex = '#66bf39';
+                } 
+                else if (q.type === 'true_false') {
+                    imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; // Image Vrai/Faux
+                    if (q.a === 'true' || q.a === 'vrai') {
+                        answerText = "🔷 **VRAI** (Bleu)";
+                        colorHex = '#45a3e5';
+                    } else {
+                        answerText = "🔺 **FAUX** (Rouge)";
+                        colorHex = '#ff3355';
+                    }
                 } else {
-                    await replyMsg.edit("❌ Aucun UUID Kahoot détecté dans cette image.");
-                    setTimeout(() => replyMsg.delete().catch(()=>{}), 5000);
+                    answerText = `**Réponse :** ${q.a}`;
                 }
-            } catch (err) {
-                console.error(err);
-                await replyMsg.edit("❌ Erreur lors de l'analyse OCR.");
-            }
+
+                return new EmbedBuilder()
+                    .setTitle(`Question ${idx + 1} / ${total}`)
+                    .setDescription(`## ${q.q}\n\n${answerText}`)
+                    .setColor(colorHex)
+                    .setImage(imgUrl)
+                    .setFooter({ text: "Utilise les boutons pour naviguer" });
+            };
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('prev').setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('next').setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(qs.length <= 1),
+                new ButtonBuilder().setLabel('TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
+            );
+
+            const msg = await interaction.editReply({ embeds: [generateEmbed(0)], components: [row] });
+
+            const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
+
+            collector.on('collect', async i => {
+                if (i.user.id !== interaction.user.id) return i.reply({content:'Pas touche !', ephemeral:true});
+                
+                if (i.customId === 'prev') currentIndex--;
+                if (i.customId === 'next') currentIndex++;
+
+                if(currentIndex < 0) currentIndex = 0;
+                if(currentIndex >= qs.length) currentIndex = qs.length - 1;
+
+                row.components[0].setDisabled(currentIndex === 0);
+                row.components[1].setDisabled(currentIndex === qs.length - 1);
+
+                await i.update({ embeds: [generateEmbed(currentIndex)], components: [row] });
+            });
+
+        } catch(e) { 
+            console.error(e);
+            interaction.editReply("❌ UUID Invalide ou Quiz privé."); 
         }
     }
 });
