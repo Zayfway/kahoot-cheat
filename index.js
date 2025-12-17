@@ -22,7 +22,7 @@ if (needInstall) {
 }
 
 // ==================================================================
-// ⚡ 2. SERVEUR NODE.JS & LOGIQUE BOT (DESIGN COSMIC PRO)
+// ⚡ 2. SERVEUR NODE.JS & LOGIQUE BOT (DESIGN COSMIC)
 // ==================================================================
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
@@ -34,61 +34,19 @@ const app = express();
 const port = process.env.PORT || 3000;
 const scriptsCache = new Map();
 
-// --- PONT PYTHON (Connecte index.js à kahoot_bot.py) ---
-// (Note: Cette partie reste présente pour la compatibilité, même si le fichier Python n'est plus généré ici)
-let pyProc = null;
-const { spawn } = require('child_process');
-
-function initPython() {
-    console.log("🔌 Démarrage du moteur Python...");
-    try { pyProc = spawn('python3', ['kahoot_bot.py']); } 
-    catch(e) { pyProc = spawn('python', ['kahoot_bot.py']); }
-    
-    if(pyProc) {
-        pyProc.stdout.on('data', d => {
-            const lines = d.toString().split('\n');
-            lines.forEach(l => {
-                if(!l) return;
-                try {
-                    const r = JSON.parse(l);
-                    if(r.type === 'log') console.log(`🐍 [PY]: ${r.msg}`);
-                    if(r.type === 'error') console.error(`🐍 [PY-ERR]: ${r.msg}`);
-                    if(r.type === 'result') {
-                        console.log(`🐍 [PY-RES]: PIN ${r.payload.pin} -> Session: ${r.payload.session ? 'OK' : 'FAIL'}`);
-                    }
-                } catch(e) { }
-            });
-        });
-        
-        pyProc.stderr.on('data', d => console.error(`🐍 [ERR]: ${d}`));
-        
-        pyProc.on('close', (code) => {
-            console.log(`⚠️ Python arrêté (Code ${code}). Relance dans 3s...`);
-            setTimeout(initPython, 3000);
-        });
-    }
-}
-initPython();
-
-function checkPinWithPython(pin) {
-    if(pyProc && pyProc.stdin.writable) {
-        pyProc.stdin.write(JSON.stringify({action: 'check_pin', pin: pin}) + '\n');
-    } else {
-        console.error("❌ Python non prêt.");
-    }
-}
-
 // --- SERVEUR WEB ---
 app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE'));
 
-// PAGE DE COPIE (DESIGN "COSMIC GLASS" PROFESSIONNEL)
+// PAGE DE COPIE (DESIGN VIOLET "COSMIC" MAINTENU & CORRIGÉ)
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
     if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">LIEN EXPIRÉ</h1>`);
 
     const rawCode = generateClientPayload(entry.data);
     const b64Code = Buffer.from(rawCode).toString('base64');
-    const obfuscatedLoader = `eval(decodeURIComponent(escape(window.atob('${b64Code}'))))`;
+    
+    // CORRECTION : Définition de la variable loader ICI
+    const loader = `eval(decodeURIComponent(escape(window.atob('${b64Code}'))))`;
 
     res.send(`
         <!DOCTYPE html>
@@ -96,92 +54,46 @@ app.get('/copy/:id', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Secure Injector - ${entry.title}</title>
+            <title>Kahoot Tool</title>
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap');
-                :root { --primary: #8b5cf6; --bg: #030014; --glass: rgba(255, 255, 255, 0.05); }
+                @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&display=swap');
+                :root { --primary: #8b5cf6; --bg: #030014; }
                 body {
                     background-color: var(--bg);
-                    background-image: 
-                        radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 25%),
-                        radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 25%);
-                    color: white; font-family: 'Inter', sans-serif;
+                    background-image: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+                    color: white; font-family: 'Outfit', sans-serif;
                     height: 100vh; margin: 0; display: flex; flex-direction: column;
                     align-items: center; justify-content: center; overflow: hidden;
                 }
-                .container {
-                    position: relative; background: var(--glass);
-                    backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1);
-                    padding: 40px; border-radius: 24px; width: 90%; max-width: 500px;
-                    text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+                .card {
+                    background: rgba(30, 27, 75, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(139, 92, 246, 0.2); padding: 40px; border-radius: 24px; width: 90%; max-width: 480px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
                 }
-                .badge {
-                    display: inline-block; background: rgba(139, 92, 246, 0.1);
-                    color: #c4b5fd; padding: 6px 14px; border-radius: 99px;
-                    font-size: 11px; font-weight: 700; margin-bottom: 20px;
-                    border: 1px solid rgba(139, 92, 246, 0.2); letter-spacing: 1px;
-                }
-                h1 { margin: 0 0 10px 0; font-size: 28px; font-weight: 800; background: linear-gradient(to right, #fff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-                .subtitle { color: #9ca3af; font-size: 14px; margin-bottom: 30px; }
-                
-                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; font-size: 12px; color: #6b7280; }
-                .info-item { display: flex; align-items: center; gap: 6px; justify-content: center; }
-                .dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; }
-
-                textarea { position: absolute; opacity: 0; pointer-events: none; }
-
-                .btn-copy {
-                    background: var(--primary); color: white; border: none;
-                    padding: 16px; border-radius: 12px; font-size: 15px; font-weight: 600;
-                    width: 100%; cursor: pointer; transition: all 0.2s;
-                    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
-                    display: flex; align-items: center; justify-content: center; gap: 10px;
-                }
-                .btn-copy:hover { transform: translateY(-2px); background: #7c3aed; box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4); }
-                .btn-copy:active { transform: translateY(0); }
-                
-                .status { margin-top: 20px; font-size: 13px; color: #6b7280; font-weight: 500; min-height: 20px; }
+                h1 { margin: 0 0 10px 0; background: linear-gradient(to right, #fff, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+                .btn { background: #8b5cf6; color: white; border: none; padding: 18px 32px; border-radius: 14px; font-weight: 700; cursor: pointer; width: 100%; transition: 0.2s; box-shadow: 0 8px 20px rgba(139, 92, 246, 0.25); text-transform: uppercase; }
+                .btn:hover { transform: translateY(-2px); background: #7c3aed; }
+                textarea { position: absolute; opacity: 0; }
+                .status { margin-top: 20px; color: #94a3b8; font-size: 13px; }
             </style>
         </head>
         <body>
-            <div class="container">
-                <div class="badge">SECURE INJECTOR</div>
+            <div class="card">
+                <div style="background:rgba(139,92,246,0.15);color:#c4b5fd;padding:6px 16px;border-radius:99px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:20px;">SECURE INJECTOR V10</div>
                 <h1>${entry.title}</h1>
-                <p class="subtitle">Le payload est prêt pour l'injection sécurisée.</p>
-                
-                <div class="info-grid">
-                    <div class="info-item"><span class="dot"></span> Protection AES-256</div>
-                    <div class="info-item"><span class="dot"></span> Shadow DOM</div>
-                    <div class="info-item"><span class="dot"></span> Anti-Détection</div>
-                    <div class="info-item"><span class="dot"></span> ${entry.data.length} Questions</div>
-                </div>
-
-                <textarea id="code">${obfuscatedLoader}</textarea>
-                
-                <button class="btn-copy" onclick="copy()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 17.929H6c-1.105 0-2-.912-2-2.036V5.036C4 3.91 4.895 3 6 3h8c1.105 0 2 .911 2 2.036v1.866m-6 .17h8c1.105 0 2 .91 2 2.035v10.857C20 21.09 19.105 22 18 22h-8c-1.105 0-2-.911-2-2.036V9.107c0-1.124.895-2.036 2-2.036z"></path></svg>
-                    COPIER LE SCRIPT
-                </button>
-                
-                <div id="status" class="status">En attente...</div>
+                <p style="color:#94a3b8;margin-bottom:30px">Script prêt. Copiez-le ci-dessous.</p>
+                <textarea id="code">${loader}</textarea> <!-- VARIABLE LOADER UTILISÉE ICI -->
+                <button class="btn" onclick="cp()">COPIER LE SCRIPT</button>
+                <div id="st" class="status">En attente...</div>
             </div>
-
             <script>
-                function copy() {
-                    const el = document.getElementById('code');
-                    el.select();
+                function cp() {
+                    document.getElementById('code').select();
                     try {
                         document.execCommand('copy');
-                        const btn = document.querySelector('.btn-copy');
-                        const originalHTML = btn.innerHTML;
-                        btn.style.background = '#10b981';
-                        btn.innerHTML = '✅ COPIÉ !';
-                        document.getElementById('status').innerHTML = "Colle le code dans la console (F12)";
-                        setTimeout(() => { 
-                            btn.style.background = '#8b5cf6'; 
-                            btn.innerHTML = originalHTML; 
-                        }, 3000);
-                    } catch(e) { document.getElementById('status').innerText = "Erreur copie manuelle"; }
+                        const b = document.querySelector('.btn');
+                        b.style.background = '#10b981'; b.innerText = "SUCCÈS !";
+                        document.getElementById('st').innerText = "✅ Colle le code dans la console (F12)";
+                        setTimeout(() => { b.style.background = '#8b5cf6'; b.innerText = "COPIER LE SCRIPT"; }, 3000);
+                    } catch(e) { document.getElementById('st').innerText = "Erreur copie manuelle"; }
                 }
             </script>
         </body>
@@ -215,14 +127,14 @@ function generateClientPayload(quizData) {
         style.textContent = \`
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
             * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(20px); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; }
-            .gui.h { opacity: 0; pointer-events: none; transform: scale(0.9); }
-            .head { padding: 16px; background: linear-gradient(90deg, rgba(139,92,246,0.1), transparent); display: flex; justify-content: space-between; align-items: center; cursor: grab; border-bottom: 1px solid rgba(255,255,255,0.05); }
-            .body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-            label { font-size: 11px; color: #a5b4fc; font-weight: 600; text-transform: uppercase; }
-            input[type=range] { width: 100%; accent-color: #8b5cf6; height: 4px; cursor: pointer; background: #3f3f46; border-radius: 2px; }
+            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(139,92,246,0.3); border-radius: 20px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; }
+            .gui.h { opacity: 0; pointer-events: none; transform: scale(0.8); }
+            .head { padding: 15px; background: linear-gradient(90deg, rgba(139,92,246,0.2), transparent); display: flex; justify-content: space-between; align-items: center; cursor: grab; border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .body { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+            label { font-size: 10px; color: #a5b4fc; font-weight: 600; text-transform: uppercase; }
+            input[type=range] { width: 100%; accent-color: #8b5cf6; height: 4px; cursor: pointer; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-            button { padding: 12px; border: none; border-radius: 8px; background: #2e2e36; color: #e0e0e0; font-weight: 600; font-size: 11px; cursor: pointer; transition: 0.2s; }
+            button { padding: 10px; border: none; border-radius: 8px; background: #2e2e36; color: #e0e0e0; font-weight: 600; font-size: 10px; cursor: pointer; transition: 0.2s; }
             button:hover { background: #3f3f46; color: white; }
             button.a { background: #7c3aed; color: white; box-shadow: 0 4px 15px rgba(124,58,237,0.4); }
             .dock { position: fixed; bottom: 30px; left: 30px; width: 70px; height: 70px; cursor: pointer; z-index: 999999; transition: 0.4s; opacity: 0; transform: translateY(60px) rotate(180deg); filter: drop-shadow(0 0 15px rgba(139,92,246,0.4)); }
@@ -241,7 +153,7 @@ function generateClientPayload(quizData) {
             <div class="gui" id="g">
                 <div class="head" id="d">
                     <span style="font-weight:700;font-size:14px">🪐 Tools</span>
-                    <div id="m" style="width:24px;height:24px;background:rgba(255,255,255,0.1);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px">_</div>
+                    <div id="m" style="width:20px;height:20px;background:rgba(255,255,255,0.1);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px">_</div>
                 </div>
                 <div class="body">
                     <div>
@@ -251,7 +163,7 @@ function generateClientPayload(quizData) {
                             <input type="number" id="nd" class="num-input" value="250">
                         </div>
                     </div>
-                    <div><label>Opacité</label><input type="range" id="ro" min="0.1" max="1" step="0.05" value="1"></div>
+                    <div><label>Opacité</label><input type="range" id="ro" min="0.1" max="1" step="0.1" value="1"></div>
                     <div class="grid">
                         <button id="ba">AUTO OFF</button>
                         <button id="bn" class="a">NOTIFS ON</button>
@@ -361,7 +273,7 @@ client.on('interactionCreate', async interaction => {
                 const total = qs.length;
                 let answerText = "";
                 let colorHex = '#8b5cf6';
-                let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; // Image par défaut
+                let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; // Image Quiz par défaut
 
                 if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
                     const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
@@ -374,7 +286,7 @@ client.on('interactionCreate', async interaction => {
                     if (q.i === 3) colorHex = '#66bf39';
                 } 
                 else if (q.type === 'true_false') {
-                    imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg';
+                    imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; // Image Vrai/Faux
                     if (q.a === 'true' || q.a === 'vrai') {
                         answerText = "🔷 **VRAI** (Bleu)";
                         colorHex = '#45a3e5';
