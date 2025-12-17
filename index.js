@@ -1,11 +1,140 @@
 // ==================================================================
-// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT)
+// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION & BOOTSTRAP
 // ==================================================================
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
+const fs = require('fs');
 
-console.log("🔄 [JS] Démarrage du système...");
+console.log("🔄 [SYSTÈME] Démarrage sur Render...");
 
-const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv'];
+// --- A. AUTO-CRÉATION DU FICHIER PYTHON (OBLIGATOIRE SUR RENDER) ---
+// Render supprime les fichiers non-git à chaque redémarrage.
+// On doit réécrire le bot python à la volée.
+const pythonScriptContent = `
+import sys
+import json
+import asyncio
+import threading
+import time
+import os
+import re
+import base64
+from difflib import SequenceMatcher
+
+# Tentative d'import des libs (si installées)
+try:
+    import aiocometd
+    from py_mini_racer import py_mini_racer
+    import requests
+except ImportError:
+    pass
+
+allowedTypes = ['quiz', 'multiple_select_quiz']
+DEFAULT_ANSWER = 1
+
+class KahootError(Exception):
+    pass
+
+class Kahoot:
+    def __init__(self, pin=None, nickname=None, quizName=None, quizID=None, maxCount=None, DEBUG=None):
+        self.pin = pin
+        self.nickname = nickname
+        self.quizName = quizName
+        self.quizID = quizID
+        self.client = requests.session()
+        self.captchaToken = "KAHOOT_TOKEN_eyJ2ZXJzaW9uIjoiIn0="
+        self.authToken = None
+        self.answers = None
+        self.colors = {0: "RED", 1: "BLUE", 2: "YELLOW", 3: "GREEN"}
+        self.maxCount = maxCount if maxCount else 50
+        self.lookup = None
+        self.loadCodes()
+        self.sessionID = None
+        self.sessionToken = None
+        self.DEBUG = DEBUG
+        try:
+            self.loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+
+    def error(self, err):
+        print(json.dumps({"type": "error", "msg": str(err)}), flush=True)
+
+    def gracefulExit(self):
+        pass
+
+    def authenticate(self, email, password):
+        pass
+
+    def checkPin(self):
+        try:
+            currentTime = int(time.time())
+            url = f"https://play.kahoot.it/reserve/session/{self.pin}/?{currentTime}"
+            resp = self.client.get(url)
+            if resp.status_code != 200:
+                return False
+            self.sessionToken = resp.headers['x-kahoot-session-token']
+            self.sessionID = self.solveChallenge(resp.json()["challenge"])
+            return True
+        except Exception as e:
+            return False
+
+    def solveChallenge(self, text):
+        text = text.replace('\\t', '', -1).encode('ascii', 'ignore').decode('utf-8')
+        text = re.split("[{};]", text)
+        replaceFunction = "return message.replace(/./g, function(char, position) {"
+        rebuilt = [text[1] + "{", text[2] + ";", replaceFunction, text[7] + ";})};", text[0]]
+        jsEngine = py_mini_racer.MiniRacer()
+        solution = jsEngine.eval("".join(rebuilt))
+        return self._shiftBits(solution)
+
+    def _shiftBits(self, solution):
+        decodedToken = base64.b64decode(self.sessionToken).decode('utf-8', 'strict')
+        solChars = [ord(s) for s in solution]
+        sessChars = [ord(s) for s in decodedToken]
+        return "".join([chr(sessChars[i] ^ solChars[i % len(solChars)]) for i in range(len(sessChars))])
+
+    def loadCodes(self):
+        self.lookup = { 1: "GET_READY", 2: "START_QUESTION", 3: "GAME_OVER" }
+
+# --- PONT NODEJS <-> PYTHON ---
+def send_to_node(data):
+    print(json.dumps(data), flush=True)
+
+def main_bridge():
+    send_to_node({"type": "log", "msg": "Python Bridge Prêt"})
+    while True:
+        try:
+            line = sys.stdin.readline()
+            if not line: break
+            cmd = json.loads(line.strip())
+            
+            if cmd['action'] == 'check_pin':
+                pin = str(cmd['pin'])
+                try:
+                    k = Kahoot(pin=pin)
+                    if k.checkPin():
+                        send_to_node({"type": "result", "payload": {"valid": True, "pin": pin, "session": k.sessionID}})
+                    else:
+                        send_to_node({"type": "result", "payload": {"valid": False, "pin": pin}})
+                except Exception as e:
+                    send_to_node({"type": "error", "msg": str(e)})
+        except: continue
+
+if __name__ == "__main__":
+    main_bridge()
+`;
+
+// Écriture du fichier sur le disque du serveur Render
+try {
+    fs.writeFileSync('kahoot_bot.py', pythonScriptContent);
+    console.log("✅ [SYSTÈME] Script Python généré avec succès.");
+} catch (err) {
+    console.error("❌ [ERREUR] Impossible de créer le fichier Python:", err);
+}
+
+// --- B. INSTALLATION DES MODULES ---
+const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv', 'ws'];
 let needInstall = false;
 
 requiredPackages.forEach(pkg => {
@@ -20,6 +149,15 @@ if (needInstall) {
     try { execSync(`npm install ${requiredPackages.join(' ')} --save --no-audit --no-fund`, { stdio: 'inherit' }); } 
     catch (error) { console.error("Erreur install JS.", error); }
 }
+
+// Installation dépendances Python (Si possible)
+console.log("🐍 [PYTHON] Vérification modules...");
+try {
+    execSync('pip install requests aiocometd py_mini_racer -q', { stdio: 'inherit' });
+} catch (e) {
+    console.log("⚠️ [INFO] Installation Python ignorée (Environnement restreint).");
+}
+
 
 // ==================================================================
 // ⚡ 2. SERVEUR NODE.JS & LOGIQUE BOT (DESIGN COSMIC)
@@ -245,16 +383,69 @@ function generateClientPayload(quizData) {
     `;
 }
 
+// --- PONT PYTHON (Connecte index.js à kahoot_bot.py) ---
+let pyProc = null;
+function initPython() {
+    console.log("🔌 Démarrage du moteur Python...");
+    // On essaie python3 puis python tout court
+    try { pyProc = spawn('python3', ['kahoot_bot.py']); } 
+    catch(e) { pyProc = spawn('python', ['kahoot_bot.py']); }
+    
+    if(pyProc) {
+        // Écoute des messages venant du script Python
+        pyProc.stdout.on('data', d => {
+            const lines = d.toString().split('\n');
+            lines.forEach(l => {
+                if(!l) return;
+                try {
+                    const r = JSON.parse(l);
+                    // Logs Python affichés dans la console JS avec un emoji serpent
+                    if(r.type === 'log') console.log(`🐍 [PY]: ${r.msg}`);
+                    if(r.type === 'error') console.error(`🐍 [PY-ERR]: ${r.msg}`);
+                    if(r.type === 'result') {
+                        console.log(`🐍 [PY-RES]: PIN ${r.payload.pin} -> Session: ${r.payload.session ? 'OK' : 'FAIL'}`);
+                    }
+                } catch(e) { /* Ignore les messages non-JSON */ }
+            });
+        });
+        
+        pyProc.stderr.on('data', d => console.error(`🐍 [ERR]: ${d}`));
+        
+        // Relance auto si le Python crash
+        pyProc.on('close', (code) => {
+            console.log(`⚠️ Python arrêté (Code ${code}). Relance dans 3s...`);
+            setTimeout(initPython, 3000);
+        });
+    }
+}
+// On lance le pont Python au démarrage
+initPython();
+
+function checkPinWithPython(pin) {
+    if(pyProc && pyProc.stdin.writable) {
+        pyProc.stdin.write(JSON.stringify({action: 'check_pin', pin: pin}) + '\n');
+    } else {
+        console.error("❌ Python non prêt.");
+    }
+}
+
 // --- BOT DISCORD (PAGINATION ET IMAGES VRAI/FAUX) ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true))].map(c=>c.toJSON());
+const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(false)).addStringOption(o=>o.setName('pin').setDescription('PIN').setRequired(false))].map(c=>c.toJSON());
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async()=>{try{await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commands})}catch(e){}})();
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const uuid = interaction.options.getString('uuid');
+        const pin = interaction.options.getString('pin');
         await interaction.deferReply({ ephemeral: true });
+
+        if(pin && !uuid) {
+            checkPinWithPython(pin);
+            return interaction.editReply("⚠️ **PIN envoyé au Python.** Regarde la console (Logs). Utilise l'UUID pour le script.");
+        }
+        if(!uuid) return interaction.editReply("❌ UUID requis.");
 
         try {
             const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
@@ -265,6 +456,7 @@ client.on('interactionCreate', async interaction => {
                 const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
                 let cleanA = "img"; 
                 if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
+                
                 return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
             });
 
