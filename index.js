@@ -1,7 +1,7 @@
 // ==================================================================
 // ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT)
 // ==================================================================
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 
 console.log("🔄 [JS] Démarrage du système...");
 
@@ -42,53 +42,6 @@ setInterval(() => {
         .then(() => {}) // Ping silencieux
         .catch(() => {}); 
 }, 5 * 60 * 1000); // Ping toutes les 5 minutes
-
-// --- PONT PYTHON (Connecte index.js à kahoot_bot.py) ---
-let pyProc = null;
-function initPython() {
-    console.log("🔌 Démarrage du moteur Python...");
-    // On essaie python3 puis python tout court
-    try { pyProc = spawn('python3', ['kahoot_bot.py']); } 
-    catch(e) { pyProc = spawn('python', ['kahoot_bot.py']); }
-    
-    if(pyProc) {
-        // Écoute des messages venant du script Python
-        pyProc.stdout.on('data', d => {
-            const lines = d.toString().split('\n');
-            lines.forEach(l => {
-                if(!l) return;
-                try {
-                    const r = JSON.parse(l);
-                    // Logs Python affichés dans la console JS avec un emoji serpent
-                    if(r.type === 'log') console.log(`🐍 [PY]: ${r.msg}`);
-                    if(r.type === 'error') console.error(`🐍 [PY-ERR]: ${r.msg}`);
-                    if(r.type === 'result') {
-                        console.log(`🐍 [PY-RES]: PIN ${r.payload.pin} -> Session: ${r.payload.session ? 'OK' : 'FAIL'}`);
-                    }
-                } catch(e) { /* Ignore les messages non-JSON */ }
-            });
-        });
-        
-        pyProc.stderr.on('data', d => console.error(`🐍 [ERR]: ${d}`));
-        
-        // Relance auto si le Python crash
-        pyProc.on('close', (code) => {
-            console.log(`⚠️ Python arrêté (Code ${code}). Relance dans 3s...`);
-            setTimeout(initPython, 3000);
-        });
-    }
-}
-// On lance le pont Python au démarrage
-initPython();
-
-// Fonction pour envoyer des commandes au Python
-function checkPinWithPython(pin) {
-    if(pyProc && pyProc.stdin.writable) {
-        pyProc.stdin.write(JSON.stringify({action: 'check_pin', pin: pin}) + '\n');
-    } else {
-        console.error("❌ Python non prêt.");
-    }
-}
 
 // --- SERVEUR WEB ---
 app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE'));
@@ -312,7 +265,6 @@ client.on('interactionCreate', async interaction => {
                 const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
                 let cleanA = "img"; 
                 if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
-                
                 return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
             });
 
