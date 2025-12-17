@@ -36,9 +36,73 @@ const port = process.env.PORT || 3000;
 const scriptsCache = new Map();
 
 // --- SERVEUR WEB ---
-app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE'));
 
-// PAGE DE COPIE (DESIGN VIOLET "COSMIC" MAINTENU)
+// 1. PAGE D'ACCUEIL STYLÉE (STATUS PAGE)
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>K-BOT Status</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;700&display=swap');
+            body { 
+                background-color: #050505; 
+                color: white; 
+                font-family: 'Outfit', sans-serif; 
+                height: 100vh; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                margin: 0; 
+                overflow: hidden;
+                background-image: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.1), transparent 60%);
+            }
+            .container { text-align: center; position: relative; z-index: 10; }
+            .status-dot { 
+                height: 20px; width: 20px; 
+                background-color: #00ff41; 
+                border-radius: 50%; 
+                display: inline-block; 
+                box-shadow: 0 0 20px #00ff41; 
+                animation: pulse 2s infinite; 
+                margin-bottom: 20px;
+            }
+            h1 { 
+                font-size: 3.5rem; margin: 0; 
+                background: linear-gradient(to right, #fff, #8b5cf6); 
+                -webkit-background-clip: text; 
+                -webkit-text-fill-color: transparent; 
+                font-weight: 700;
+            }
+            p { color: #888; font-size: 1.2rem; margin-top: 10px; letter-spacing: 1px; }
+            
+            .orb {
+                position: absolute; width: 400px; height: 400px;
+                background: #8b5cf6; border-radius: 50%;
+                filter: blur(120px); opacity: 0.1; z-index: 0;
+                animation: float 10s infinite ease-in-out;
+            }
+            
+            @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+            @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0, -20px); } }
+        </style>
+    </head>
+    <body>
+        <div class="orb"></div>
+        <div class="container">
+            <div class="status-dot"></div>
+            <h1>SYSTEM ONLINE</h1>
+            <p>BOT DISCORD & INJECTEUR ACTIFS</p>
+        </div>
+    </body>
+    </html>
+    `);
+});
+
+// 2. PAGE DE COPIE (DESIGN VIOLET "COSMIC")
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
     if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">LIEN EXPIRÉ</h1>`);
@@ -113,7 +177,8 @@ function generateClientPayload(quizData) {
     (function() {
         const _db = ${json};
         const _st = { 
-            d: 100,     // Délai Fixe (ms)
+            dMin: 500,  // Délai min
+            dMax: 1000, // Délai max
             o: 1,       // Opacité Planète (défaut 100%)
             a: false,   // Auto-Select
             n: true,    // Notifications
@@ -168,6 +233,7 @@ function generateClientPayload(quizData) {
             }
 
             .time-group { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; font-size: 12px; color: #bbb; }
+            b { color: #888; font-weight: normal; }
 
             p { font-size: 11px; color: #666; margin-top: 15px; text-align: center; }
             a { color: #8b5cf6; text-decoration: none; }
@@ -183,16 +249,17 @@ function generateClientPayload(quizData) {
 
             /* --- PLANETE (MODE MINIMISÉ) --- */
             .planet-dock {
-                position: fixed; bottom: 20px; left: 20px;
-                width: 50px; height: 50px;
+                position: fixed; bottom: 20px; left: 20px; /* EN BAS A GAUCHE */
+                width: 50px; height: 50px; /* PLUS PETITE */
                 cursor: pointer; z-index: 999999;
                 transition: 0.4s;
-                opacity: 0; transform: translateY(60px) rotate(90deg);
+                opacity: 0; transform: translateY(60px) rotate(90deg); /* VERTICAL/ROTATION */
                 filter: drop-shadow(0 0 10px rgba(139,92,246,0.4));
             }
             .planet-dock.visible { opacity: 1; transform: translateY(0) rotate(0deg); }
             .planet-dock:hover { transform: scale(1.1); }
             
+            /* NOTIFS */
             .toasts { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
             .t { background: rgba(33,33,33,0.95); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 12px; border: 1px solid #555; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         \`;
@@ -209,9 +276,11 @@ function generateClientPayload(quizData) {
                     <input type="button" value="Disabled" id="btnAuto">
                 </div>
                 
-                <h3>Fixed Delay (ms)</h3>
+                <h3>Randomize time between</h3>
                 <div class="time-group">
-                    <input type="number" value="100" id="delay" placeholder="100" min="1" max="10000">
+                    <input type="number" value="500" id="start" placeholder="500">&nbsp;ms
+                    <b>and</b>
+                    <input type="number" value="1500" id="end" placeholder="1500">&nbsp;ms
                 </div>
 
                 <div class="cheatnetwork-align">
@@ -276,8 +345,9 @@ function generateClientPayload(quizData) {
             if(_st.a) notif("Auto-Select Enabled");
         };
 
-        // Delay Input (Fixe, plus de random)
-        $('#delay').oninput = (e) => _st.d = parseInt(e.target.value) || 100;
+        // Randomize Time Inputs
+        $('#start').oninput = (e) => _st.dMin = parseInt(e.target.value) || 0;
+        $('#end').oninput = (e) => _st.dMax = parseInt(e.target.value) || 0;
 
         $('#opacity').oninput = (e) => {
             let val = parseInt(e.target.value);
@@ -339,7 +409,9 @@ function generateClientPayload(quizData) {
                             notif("Found!");
                             
                             if(_st.a) {
-                                setTimeout(() => { b.click(); }, _st.d);
+                                // Délai randomisé comme demandé dans le GUI
+                                const delay = Math.floor(Math.random() * (_st.dMax - _st.dMin + 1) + _st.dMin);
+                                setTimeout(() => { b.click(); }, delay);
                             }
                         }
                     }
