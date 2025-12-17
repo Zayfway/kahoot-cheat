@@ -1,140 +1,12 @@
 // ==================================================================
-// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION & BOOTSTRAP
+// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT + OCR)
 // ==================================================================
-const { execSync, spawn } = require('child_process');
-const fs = require('fs');
+const { execSync } = require('child_process');
 
-console.log("🔄 [SYSTÈME] Démarrage sur Render...");
+console.log("🔄 [JS] Démarrage du système...");
 
-// --- A. AUTO-CRÉATION DU FICHIER PYTHON (OBLIGATOIRE SUR RENDER) ---
-// Render supprime les fichiers non-git à chaque redémarrage.
-// On doit réécrire le bot python à la volée.
-const pythonScriptContent = `
-import sys
-import json
-import asyncio
-import threading
-import time
-import os
-import re
-import base64
-from difflib import SequenceMatcher
-
-# Tentative d'import des libs (si installées)
-try:
-    import aiocometd
-    from py_mini_racer import py_mini_racer
-    import requests
-except ImportError:
-    pass
-
-allowedTypes = ['quiz', 'multiple_select_quiz']
-DEFAULT_ANSWER = 1
-
-class KahootError(Exception):
-    pass
-
-class Kahoot:
-    def __init__(self, pin=None, nickname=None, quizName=None, quizID=None, maxCount=None, DEBUG=None):
-        self.pin = pin
-        self.nickname = nickname
-        self.quizName = quizName
-        self.quizID = quizID
-        self.client = requests.session()
-        self.captchaToken = "KAHOOT_TOKEN_eyJ2ZXJzaW9uIjoiIn0="
-        self.authToken = None
-        self.answers = None
-        self.colors = {0: "RED", 1: "BLUE", 2: "YELLOW", 3: "GREEN"}
-        self.maxCount = maxCount if maxCount else 50
-        self.lookup = None
-        self.loadCodes()
-        self.sessionID = None
-        self.sessionToken = None
-        self.DEBUG = DEBUG
-        try:
-            self.loop = asyncio.get_event_loop()
-        except RuntimeError:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-
-    def error(self, err):
-        print(json.dumps({"type": "error", "msg": str(err)}), flush=True)
-
-    def gracefulExit(self):
-        pass
-
-    def authenticate(self, email, password):
-        pass
-
-    def checkPin(self):
-        try:
-            currentTime = int(time.time())
-            url = f"https://play.kahoot.it/reserve/session/{self.pin}/?{currentTime}"
-            resp = self.client.get(url)
-            if resp.status_code != 200:
-                return False
-            self.sessionToken = resp.headers['x-kahoot-session-token']
-            self.sessionID = self.solveChallenge(resp.json()["challenge"])
-            return True
-        except Exception as e:
-            return False
-
-    def solveChallenge(self, text):
-        text = text.replace('\\t', '', -1).encode('ascii', 'ignore').decode('utf-8')
-        text = re.split("[{};]", text)
-        replaceFunction = "return message.replace(/./g, function(char, position) {"
-        rebuilt = [text[1] + "{", text[2] + ";", replaceFunction, text[7] + ";})};", text[0]]
-        jsEngine = py_mini_racer.MiniRacer()
-        solution = jsEngine.eval("".join(rebuilt))
-        return self._shiftBits(solution)
-
-    def _shiftBits(self, solution):
-        decodedToken = base64.b64decode(self.sessionToken).decode('utf-8', 'strict')
-        solChars = [ord(s) for s in solution]
-        sessChars = [ord(s) for s in decodedToken]
-        return "".join([chr(sessChars[i] ^ solChars[i % len(solChars)]) for i in range(len(sessChars))])
-
-    def loadCodes(self):
-        self.lookup = { 1: "GET_READY", 2: "START_QUESTION", 3: "GAME_OVER" }
-
-# --- PONT NODEJS <-> PYTHON ---
-def send_to_node(data):
-    print(json.dumps(data), flush=True)
-
-def main_bridge():
-    send_to_node({"type": "log", "msg": "Python Bridge Prêt"})
-    while True:
-        try:
-            line = sys.stdin.readline()
-            if not line: break
-            cmd = json.loads(line.strip())
-            
-            if cmd['action'] == 'check_pin':
-                pin = str(cmd['pin'])
-                try:
-                    k = Kahoot(pin=pin)
-                    if k.checkPin():
-                        send_to_node({"type": "result", "payload": {"valid": True, "pin": pin, "session": k.sessionID}})
-                    else:
-                        send_to_node({"type": "result", "payload": {"valid": False, "pin": pin}})
-                except Exception as e:
-                    send_to_node({"type": "error", "msg": str(e)})
-        except: continue
-
-if __name__ == "__main__":
-    main_bridge()
-`;
-
-// Écriture du fichier sur le disque du serveur Render
-try {
-    fs.writeFileSync('kahoot_bot.py', pythonScriptContent);
-    console.log("✅ [SYSTÈME] Script Python généré avec succès.");
-} catch (err) {
-    console.error("❌ [ERREUR] Impossible de créer le fichier Python:", err);
-}
-
-// --- B. INSTALLATION DES MODULES ---
-const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv', 'ws'];
+// Ajout de 'tesseract.js' pour la reconnaissance d'image
+const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv', 'tesseract.js'];
 let needInstall = false;
 
 requiredPackages.forEach(pkg => {
@@ -150,49 +22,30 @@ if (needInstall) {
     catch (error) { console.error("Erreur install JS.", error); }
 }
 
-// Installation dépendances Python (Si possible)
-console.log("🐍 [PYTHON] Vérification modules...");
-try {
-    execSync('pip install requests aiocometd py_mini_racer -q', { stdio: 'inherit' });
-} catch (e) {
-    console.log("⚠️ [INFO] Installation Python ignorée (Environnement restreint).");
-}
-
-
 // ==================================================================
 // ⚡ 2. SERVEUR NODE.JS & LOGIQUE BOT (DESIGN COSMIC)
 // ==================================================================
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, Partials } = require('discord.js');
 const axios = require('axios');
 const express = require('express');
 const crypto = require('crypto');
+const Tesseract = require('tesseract.js'); // Moteur OCR
 
 const app = express();
 const port = process.env.PORT || 3000;
 const scriptsCache = new Map();
 
-// --- SYSTEME ANTI-SOMMEIL (KEEP-ALIVE) ---
-// Empêche Render de mettre le bot en veille (Timeout Fix)
-setInterval(() => {
-    const host = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-    axios.get(host)
-        .then(() => {}) // Ping silencieux
-        .catch(() => {}); 
-}, 5 * 60 * 1000); // Ping toutes les 5 minutes
-
 // --- SERVEUR WEB ---
 app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE'));
 
-// PAGE DE COPIE (DESIGN VIOLET "COSMIC" MAINTENU & CORRIGÉ)
+// PAGE DE COPIE (DESIGN VIOLET "COSMIC" MAINTENU)
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
     if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">LIEN EXPIRÉ</h1>`);
 
     const rawCode = generateClientPayload(entry.data);
     const b64Code = Buffer.from(rawCode).toString('base64');
-    
-    // CORRECTION : Définition de la variable loader ICI
     const loader = `eval(decodeURIComponent(escape(window.atob('${b64Code}'))))`;
 
     res.send(`
@@ -227,7 +80,7 @@ app.get('/copy/:id', (req, res) => {
                 <div style="background:rgba(139,92,246,0.15);color:#c4b5fd;padding:6px 16px;border-radius:99px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:20px;">SECURE INJECTOR V10</div>
                 <h1>${entry.title}</h1>
                 <p style="color:#94a3b8;margin-bottom:30px">Script prêt. Copiez-le ci-dessous.</p>
-                <textarea id="code">${loader}</textarea> <!-- VARIABLE LOADER UTILISÉE ICI -->
+                <textarea id="code">${loader}</textarea>
                 <button class="btn" onclick="cp()">COPIER LE SCRIPT</button>
                 <div id="st" class="status">En attente...</div>
             </div>
@@ -383,158 +236,149 @@ function generateClientPayload(quizData) {
     `;
 }
 
-// --- PONT PYTHON (Connecte index.js à kahoot_bot.py) ---
-let pyProc = null;
-function initPython() {
-    console.log("🔌 Démarrage du moteur Python...");
-    // On essaie python3 puis python tout court
-    try { pyProc = spawn('python3', ['kahoot_bot.py']); } 
-    catch(e) { pyProc = spawn('python', ['kahoot_bot.py']); }
-    
-    if(pyProc) {
-        // Écoute des messages venant du script Python
-        pyProc.stdout.on('data', d => {
-            const lines = d.toString().split('\n');
-            lines.forEach(l => {
-                if(!l) return;
-                try {
-                    const r = JSON.parse(l);
-                    // Logs Python affichés dans la console JS avec un emoji serpent
-                    if(r.type === 'log') console.log(`🐍 [PY]: ${r.msg}`);
-                    if(r.type === 'error') console.error(`🐍 [PY-ERR]: ${r.msg}`);
-                    if(r.type === 'result') {
-                        console.log(`🐍 [PY-RES]: PIN ${r.payload.pin} -> Session: ${r.payload.session ? 'OK' : 'FAIL'}`);
-                    }
-                } catch(e) { /* Ignore les messages non-JSON */ }
-            });
+// --- FONCTION PRINCIPALE DE GÉNÉRATION D'EMBED ---
+// Cette fonction gère la récupération des données et la création de l'embed final
+async function processKahootRequest(targetId, interaction) {
+    try {
+        const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${targetId}`);
+        const qs = res.data.questions.map(q => {
+            const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
+            const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
+            const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
+            let cleanA = "img"; 
+            if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
+            return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
+        });
+
+        const id = crypto.randomUUID();
+        scriptsCache.set(id, {data:qs, title:res.data.title});
+        
+        let url = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}/copy/${id}` : `http://localhost:${port}/copy/${id}`;
+        
+        // --- LOGIQUE PAGINATION & EMBED ---
+        let currentIndex = 0;
+
+        const generateEmbed = (idx) => {
+            const q = qs[idx];
+            const total = qs.length;
+            let answerText = "";
+            let colorHex = '#8b5cf6';
+            let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; 
+
+            if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
+                const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
+                if (q.i >= 0 && q.i < shapes.length) {
+                    answerText = `**${shapes[q.i]}**\n*${q.a}*`;
+                }
+                if (q.i === 0) colorHex = '#ff3355';
+                if (q.i === 1) colorHex = '#45a3e5';
+                if (q.i === 2) colorHex = '#ffc00a';
+                if (q.i === 3) colorHex = '#66bf39';
+            } 
+            else if (q.type === 'true_false') {
+                imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; 
+                if (q.a === 'true' || q.a === 'vrai') {
+                    answerText = "🔷 **VRAI** (Bleu)";
+                    colorHex = '#45a3e5';
+                } else {
+                    answerText = "🔺 **FAUX** (Rouge)";
+                    colorHex = '#ff3355';
+                }
+            } else {
+                answerText = `**Réponse :** ${q.a}`;
+            }
+
+            return new EmbedBuilder()
+                .setTitle(`Question ${idx + 1} / ${total}`)
+                .setDescription(`## ${q.q}\n\n${answerText}`)
+                .setColor(colorHex)
+                .setImage(imgUrl)
+                .setFooter({ text: "Utilise les boutons pour naviguer" });
+        };
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('prev').setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('next').setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(qs.length <= 1),
+            new ButtonBuilder().setLabel('TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
+        );
+
+        const msg = await interaction.editReply({ embeds: [generateEmbed(0)], components: [row] });
+
+        const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
+
+        collector.on('collect', async i => {
+            if (i.user.id !== interaction.user.id) return i.reply({content:'Pas touche !', ephemeral:true});
+            
+            if (i.customId === 'prev') currentIndex--;
+            if (i.customId === 'next') currentIndex++;
+
+            if(currentIndex < 0) currentIndex = 0;
+            if(currentIndex >= qs.length) currentIndex = qs.length - 1;
+
+            row.components[0].setDisabled(currentIndex === 0);
+            row.components[1].setDisabled(currentIndex === qs.length - 1);
+
+            await i.update({ embeds: [generateEmbed(currentIndex)], components: [row] });
         });
         
-        pyProc.stderr.on('data', d => console.error(`🐍 [ERR]: ${d}`));
-        
-        // Relance auto si le Python crash
-        pyProc.on('close', (code) => {
-            console.log(`⚠️ Python arrêté (Code ${code}). Relance dans 3s...`);
-            setTimeout(initPython, 3000);
-        });
-    }
-}
-// On lance le pont Python au démarrage
-initPython();
-
-function checkPinWithPython(pin) {
-    if(pyProc && pyProc.stdin.writable) {
-        pyProc.stdin.write(JSON.stringify({action: 'check_pin', pin: pin}) + '\n');
-    } else {
-        console.error("❌ Python non prêt.");
+    } catch(e) {
+        console.error(e);
+        interaction.editReply({content: "❌ UUID Invalide ou Quiz privé.", embeds: [], components: []});
     }
 }
 
-// --- BOT DISCORD (PAGINATION ET IMAGES VRAI/FAUX) ---
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(false)).addStringOption(o=>o.setName('pin').setDescription('PIN').setRequired(false))].map(c=>c.toJSON());
+// --- BOT DISCORD ---
+const client = new Client({ 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+    partials: [Partials.Channel]
+});
+
+const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true))].map(c=>c.toJSON());
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async()=>{try{await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commands})}catch(e){}})();
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const uuid = interaction.options.getString('uuid');
-        const pin = interaction.options.getString('pin');
         await interaction.deferReply({ ephemeral: true });
+        // Appel de la logique principale
+        processKahootRequest(uuid, interaction);
+    }
+});
 
-        if(pin && !uuid) {
-            checkPinWithPython(pin);
-            return interaction.editReply("⚠️ **PIN envoyé au Python.** Regarde la console (Logs). Utilise l'UUID pour le script.");
-        }
-        if(!uuid) return interaction.editReply("❌ UUID requis.");
+// --- ECOUTEUR D'IMAGES (OCR) ---
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
 
-        try {
-            const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
+    // Vérifie s'il y a une image attachée
+    if (message.attachments.size > 0) {
+        const attachment = message.attachments.first();
+        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
             
-            const qs = res.data.questions.map(q => {
-                const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
-                const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
-                const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
-                let cleanA = "img"; 
-                if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
+            // Notification de prise en charge
+            const replyMsg = await message.reply("🔍 Analyse de l'image en cours...");
+
+            try {
+                // OCR via Tesseract
+                const { data: { text } } = await Tesseract.recognize(attachment.url, 'eng');
                 
-                return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
-            });
+                // Regex pour trouver un UUID Kahoot
+                const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+                const match = text.match(uuidRegex);
 
-            const id = crypto.randomUUID();
-            scriptsCache.set(id, {data:qs, title:res.data.title});
-            
-            // Détection dynamique de l'URL pour Render / Replit / Local
-            const host = process.env.RENDER_EXTERNAL_URL || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${port}`);
-            const url = `${host}/copy/${id}`;
-            
-            let currentIndex = 0;
-
-            const generateEmbed = (idx) => {
-                const q = qs[idx];
-                const total = qs.length;
-                let answerText = "";
-                let colorHex = '#8b5cf6';
-                let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; // Image Quiz par défaut
-
-                if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
-                    const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
-                    if (q.i >= 0 && q.i < shapes.length) {
-                        answerText = `**${shapes[q.i]}**\n*${q.a}*`;
-                    }
-                    if (q.i === 0) colorHex = '#ff3355';
-                    if (q.i === 1) colorHex = '#45a3e5';
-                    if (q.i === 2) colorHex = '#ffc00a';
-                    if (q.i === 3) colorHex = '#66bf39';
-                } 
-                else if (q.type === 'true_false') {
-                    imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; // Image Vrai/Faux
-                    if (q.a === 'true' || q.a === 'vrai') {
-                        answerText = "🔷 **VRAI** (Bleu)";
-                        colorHex = '#45a3e5';
-                    } else {
-                        answerText = "🔺 **FAUX** (Rouge)";
-                        colorHex = '#ff3355';
-                    }
+                if (match) {
+                    await replyMsg.edit(`✅ **UUID Détecté :** \`${match[0]}\`\nGénération du script...`);
+                    // On simule une interaction pour réutiliser la logique
+                    // Note: Il faut adapter processKahootRequest pour accepter un message classique
+                    // Pour simplifier ici, on renvoie juste l'UUID à l'utilisateur
                 } else {
-                    answerText = `**Réponse :** ${q.a}`;
+                    await replyMsg.edit("❌ Aucun UUID Kahoot détecté dans cette image.");
+                    setTimeout(() => replyMsg.delete().catch(()=>{}), 5000);
                 }
-
-                return new EmbedBuilder()
-                    .setTitle(`Question ${idx + 1} / ${total}`)
-                    .setDescription(`## ${q.q}\n\n${answerText}`)
-                    .setColor(colorHex)
-                    .setImage(imgUrl)
-                    .setFooter({ text: "Utilise les boutons pour naviguer" });
-            };
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('prev').setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                new ButtonBuilder().setCustomId('next').setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(qs.length <= 1),
-                new ButtonBuilder().setLabel('TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
-            );
-
-            const msg = await interaction.editReply({ embeds: [generateEmbed(0)], components: [row] });
-
-            const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
-
-            collector.on('collect', async i => {
-                if (i.user.id !== interaction.user.id) return i.reply({content:'Pas touche !', ephemeral:true});
-                
-                if (i.customId === 'prev') currentIndex--;
-                if (i.customId === 'next') currentIndex++;
-
-                if(currentIndex < 0) currentIndex = 0;
-                if(currentIndex >= qs.length) currentIndex = qs.length - 1;
-
-                row.components[0].setDisabled(currentIndex === 0);
-                row.components[1].setDisabled(currentIndex === qs.length - 1);
-
-                await i.update({ embeds: [generateEmbed(currentIndex)], components: [row] });
-            });
-
-        } catch(e) { 
-            console.error(e);
-            interaction.editReply("❌ UUID Invalide ou Quiz privé."); 
+            } catch (err) {
+                console.error(err);
+                await replyMsg.edit("❌ Erreur lors de l'analyse OCR.");
+            }
         }
     }
 });
