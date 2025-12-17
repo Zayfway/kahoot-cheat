@@ -47,65 +47,39 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>K-BOT Status</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
             body { 
-                background-color: #050505; 
-                color: white; 
-                font-family: 'Outfit', sans-serif; 
+                background-color: #0a0a0a; 
+                color: #00ff00; 
+                font-family: 'Courier Prime', monospace; 
                 height: 100vh; 
                 display: flex; 
                 align-items: center; 
                 justify-content: center; 
                 margin: 0; 
                 overflow: hidden;
-                background-image: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.1), transparent 60%);
             }
-            .container { text-align: center; position: relative; z-index: 10; }
-            .status-dot { 
-                height: 20px; width: 20px; 
-                background-color: #00ff41; 
-                border-radius: 50%; 
-                display: inline-block; 
-                box-shadow: 0 0 20px #00ff41; 
-                animation: pulse 2s infinite; 
-                margin-bottom: 20px;
-            }
-            h1 { 
-                font-size: 3.5rem; margin: 0; 
-                background: linear-gradient(to right, #fff, #8b5cf6); 
-                -webkit-background-clip: text; 
-                -webkit-text-fill-color: transparent; 
-                font-weight: 700;
-            }
-            p { color: #888; font-size: 1.2rem; margin-top: 10px; letter-spacing: 1px; }
-            
-            .orb {
-                position: absolute; width: 400px; height: 400px;
-                background: #8b5cf6; border-radius: 50%;
-                filter: blur(120px); opacity: 0.1; z-index: 0;
-                animation: float 10s infinite ease-in-out;
-            }
-            
-            @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
-            @keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0, -20px); } }
+            .container { text-align: center; border: 1px solid #00ff00; padding: 40px; box-shadow: 0 0 20px rgba(0, 255, 0, 0.2); background: rgba(0,0,0,0.8); }
+            h1 { font-size: 2rem; margin: 0; text-shadow: 0 0 10px #00ff00; }
+            p { color: #ccffcc; font-size: 1rem; margin-top: 10px; }
+            .blink { animation: blink 1s infinite; }
+            @keyframes blink { 50% { opacity: 0; } }
         </style>
     </head>
     <body>
-        <div class="orb"></div>
         <div class="container">
-            <div class="status-dot"></div>
-            <h1>SYSTEM ONLINE</h1>
-            <p>BOT DISCORD & INJECTEUR ACTIFS</p>
+            <h1>SYSTEM ONLINE <span class="blink">_</span></h1>
+            <p>OPERATIONAL IN REALM X</p>
         </div>
     </body>
     </html>
     `);
 });
 
-// 2. PAGE DE COPIE (DESIGN VIOLET "COSMIC")
+// 2. PAGE DE COPIE (DESIGN STYLE "IMAGE" / HACKER)
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
-    if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">LIEN EXPIRÉ</h1>`);
+    if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;">SESSION EXPIRED</h1>`);
 
     const rawCode = generateClientPayload(entry.data);
     const b64Code = Buffer.from(rawCode).toString('base64');
@@ -117,46 +91,87 @@ app.get('/copy/:id', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Kahoot Tool</title>
+            <title>Injector // ${entry.title}</title>
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&display=swap');
-                :root { --primary: #8b5cf6; --bg: #030014; }
+                @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
                 body {
-                    background-color: var(--bg);
-                    background-image: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
-                    color: white; font-family: 'Outfit', sans-serif;
+                    background-color: #111;
+                    color: #ddd;
+                    font-family: 'Roboto Mono', monospace;
                     height: 100vh; margin: 0; display: flex; flex-direction: column;
-                    align-items: center; justify-content: center; overflow: hidden;
+                    align-items: center; justify-content: center;
                 }
-                .card {
-                    background: rgba(30, 27, 75, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(139, 92, 246, 0.2); padding: 40px; border-radius: 24px; width: 90%; max-width: 480px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+                .terminal-window {
+                    background: #1e1e1e;
+                    width: 80%; max-width: 700px;
+                    border-radius: 6px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                    border: 1px solid #333;
+                    overflow: hidden;
                 }
-                h1 { margin: 0 0 10px 0; background: linear-gradient(to right, #fff, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-                .btn { background: #8b5cf6; color: white; border: none; padding: 18px 32px; border-radius: 14px; font-weight: 700; cursor: pointer; width: 100%; transition: 0.2s; box-shadow: 0 8px 20px rgba(139, 92, 246, 0.25); text-transform: uppercase; }
-                .btn:hover { transform: translateY(-2px); background: #7c3aed; }
-                textarea { position: absolute; opacity: 0; }
-                .status { margin-top: 20px; color: #94a3b8; font-size: 13px; }
+                .terminal-header {
+                    background: #2d2d2d; padding: 10px 15px;
+                    display: flex; gap: 8px; align-items: center;
+                    border-bottom: 1px solid #333;
+                }
+                .dot { width: 12px; height: 12px; border-radius: 50%; }
+                .red { background: #ff5f56; } .yellow { background: #ffbd2e; } .green { background: #27c93f; }
+                .title { margin-left: 10px; font-size: 12px; color: #888; }
+                
+                .terminal-body { padding: 20px; text-align: left; }
+                h2 { color: #fff; margin-top: 0; font-size: 18px; }
+                .code-block {
+                    background: #000; color: #00ff00;
+                    padding: 15px; border-radius: 4px;
+                    border: 1px solid #333;
+                    margin: 15px 0;
+                    font-size: 12px;
+                    overflow-x: auto;
+                    white-space: nowrap;
+                    position: relative;
+                }
+                
+                .btn {
+                    background: #27c93f; color: #000;
+                    border: none; padding: 12px 24px;
+                    border-radius: 4px; font-weight: bold;
+                    cursor: pointer; font-family: inherit;
+                    display: block; width: 100%; margin-top: 20px;
+                    transition: 0.2s;
+                }
+                .btn:hover { background: #22b037; }
+                textarea { position: absolute; opacity: 0; pointer-events: none; }
+                .info { color: #666; font-size: 11px; margin-top: 10px; }
             </style>
         </head>
         <body>
-            <div class="card">
-                <div style="background:rgba(139,92,246,0.15);color:#c4b5fd;padding:6px 16px;border-radius:99px;font-size:12px;font-weight:600;display:inline-block;margin-bottom:20px;">SECURE INJECTOR V10</div>
-                <h1>${entry.title}</h1>
-                <p style="color:#94a3b8;margin-bottom:30px">Script prêt. Copiez-le ci-dessous.</p>
-                <textarea id="code">${loader}</textarea>
-                <button class="btn" onclick="cp()">COPIER LE SCRIPT</button>
-                <div id="st" class="status">En attente...</div>
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div>
+                    <span class="title">root@injector:~/kahoot/${entry.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}</span>
+                </div>
+                <div class="terminal-body">
+                    <h2>Target: ${entry.title}</h2>
+                    <div style="color:#aaa; font-size:13px; margin-bottom:10px;">Payload generated. Inject via Console (F12).</div>
+                    
+                    <div class="code-block" id="displayCode">${loader.substring(0, 50)}... [HIDDEN_PAYLOAD_V10]</div>
+                    <textarea id="code">${loader}</textarea>
+                    
+                    <button class="btn" onclick="cp()">COPY PAYLOAD</button>
+                    <div class="info" id="st">Ready to inject.</div>
+                </div>
             </div>
             <script>
                 function cp() {
-                    document.getElementById('code').select();
+                    const t = document.getElementById('code');
+                    t.select();
                     try {
                         document.execCommand('copy');
                         const b = document.querySelector('.btn');
-                        b.style.background = '#10b981'; b.innerText = "SUCCÈS !";
-                        document.getElementById('st').innerText = "✅ Colle le code dans la console (F12)";
-                        setTimeout(() => { b.style.background = '#8b5cf6'; b.innerText = "COPIER LE SCRIPT"; }, 3000);
-                    } catch(e) { document.getElementById('st').innerText = "Erreur copie manuelle"; }
+                        b.style.background = '#fff'; b.innerText = "COPIED!";
+                        document.getElementById('st').innerText = "Paste into Developer Console (F12) > Console tab";
+                        setTimeout(() => { b.style.background = '#27c93f'; b.innerText = "COPY PAYLOAD"; }, 2000);
+                    } catch(e) { alert("Copy failed"); }
                 }
             </script>
         </body>
@@ -166,7 +181,7 @@ app.get('/copy/:id', (req, res) => {
 
 app.listen(port, () => console.log(`🌍 Serveur actif : ${port}`));
 
-// --- GENERATEUR GUI (STYLE CHEATNETWORK + PLANÈTE) ---
+// --- GENERATEUR GUI (MODIFIÉ: PRÉCISION MS, OPACITÉ, PLANÈTE) ---
 function generateClientPayload(quizData) {
     const json = JSON.stringify(quizData);
     
@@ -177,12 +192,14 @@ function generateClientPayload(quizData) {
     (function() {
         const _db = ${json};
         const _st = { 
-            dMin: 500,  // Délai min
-            dMax: 1000, // Délai max
-            o: 1,       // Opacité Planète (défaut 100%)
-            a: false,   // Auto-Select
-            n: true,    // Notifications
-            i: false    // Incognito
+            fixed: false, // Mode Fixe vs Random
+            fixVal: 500,  // Valeur fixe
+            dMin: 500,    // Délai min
+            dMax: 1000,   // Délai max
+            o: 1,         // Opacité Planète
+            a: false,     // Auto-Select
+            n: true,      // Notifications
+            i: false      // Incognito
         };
         console.clear(); 
 
@@ -197,17 +214,19 @@ function generateClientPayload(quizData) {
             @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
             * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
             
-            /* --- STYLE CHEATNETWORK --- */
             .cheatnetwork-content {
                 position: fixed; top: 20px; right: 20px; width: 340px;
-                background: rgba(33, 33, 33, 0.95);
+                background: rgba(33, 33, 33, 0.98);
                 color: #fff; padding: 15px; border-radius: 8px;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.6);
                 font-size: 14px;
                 transition: opacity 0.3s, transform 0.3s;
                 border: 1px solid #444;
+                opacity: 1; pointer-events: auto;
             }
-            .cheatnetwork-content.minimized { opacity: 0; pointer-events: none; transform: scale(0.8); }
+            .cheatnetwork-content.minimized { 
+                opacity: 0; pointer-events: none; transform: scale(0.9); display: none; 
+            }
 
             .cheatnetwork-align {
                 display: flex; justify-content: space-between; align-items: center;
@@ -229,16 +248,17 @@ function generateClientPayload(quizData) {
 
             input[type="number"] {
                 background: #222; border: 1px solid #555; color: white;
-                padding: 4px; border-radius: 4px; width: 80px; text-align: center;
+                padding: 4px; border-radius: 4px; width: 70px; text-align: center;
             }
+            
+            input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
 
             .time-group { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; font-size: 12px; color: #bbb; }
-            b { color: #888; font-weight: normal; }
+            .hidden { display: none !important; }
 
             p { font-size: 11px; color: #666; margin-top: 15px; text-align: center; }
             a { color: #8b5cf6; text-decoration: none; }
 
-            /* BOUTON MINIMIZE */
             .min-btn {
                 position: absolute; top: 5px; right: 5px;
                 width: 15px; height: 15px; background: transparent;
@@ -247,26 +267,25 @@ function generateClientPayload(quizData) {
             }
             .min-btn:hover { color: #fff; }
 
-            /* --- PLANETE (MODE MINIMISÉ) --- */
+            /* --- PLANETE (MODIFIÉ: BAS GAUCHE HORIZONTAL) --- */
             .planet-dock {
-                position: fixed; bottom: 20px; left: 20px; /* EN BAS A GAUCHE */
-                width: 50px; height: 50px; /* PLUS PETITE */
+                position: fixed; bottom: 20px; left: 20px; 
+                width: 50px; height: 50px; 
                 cursor: pointer; z-index: 999999;
                 transition: 0.4s;
-                opacity: 0; transform: translateY(60px) rotate(90deg); /* VERTICAL/ROTATION */
+                opacity: 0; 
+                transform: translateX(-100px); /* Cache vers la gauche */
                 filter: drop-shadow(0 0 10px rgba(139,92,246,0.4));
             }
-            .planet-dock.visible { opacity: 1; transform: translateY(0) rotate(0deg); }
+            .planet-dock.visible { opacity: 1; transform: translateX(0); }
             .planet-dock:hover { transform: scale(1.1); }
             
-            /* NOTIFS */
             .toasts { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
             .t { background: rgba(33,33,33,0.95); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 12px; border: 1px solid #555; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         \`;
         s.appendChild(style);
 
         const w = document.createElement('div');
-        // HTML EXACT DEMANDÉ (Avec modification délai simple)
         w.innerHTML = \`
             <div class="cheatnetwork-content" id="gui">
                 <div class="min-btn" id="btnMin" title="Minimize">_</div>
@@ -276,15 +295,22 @@ function generateClientPayload(quizData) {
                     <input type="button" value="Disabled" id="btnAuto">
                 </div>
                 
-                <h3>Randomize time between</h3>
-                <div class="time-group">
-                    <input type="number" value="500" id="start" placeholder="500">&nbsp;ms
-                    <b>and</b>
-                    <input type="number" value="1500" id="end" placeholder="1500">&nbsp;ms
+                <h3>Answer Delay (ms)</h3>
+                <div class="cheatnetwork-align" style="border:none; padding-bottom:5px; margin-bottom:5px;">
+                    <span>Use Exact Time:</span>
+                    <input type="checkbox" id="chkFixed">
+                </div>
+                
+                <div class="time-group" id="grpRange">
+                    <input type="number" value="500" id="start"> <b>to</b>
+                    <input type="number" value="1500" id="end"> ms
+                </div>
+                <div class="time-group hidden" id="grpFixed">
+                    <b>Exact:</b> <input type="number" value="500" id="exact"> ms
                 </div>
 
                 <div class="cheatnetwork-align">
-                    <h2>Minimized menu opacity:</h2>
+                    <h2>Planet Opacity:</h2>
                     <input type="number" value="100" id="opacity" placeholder="100" max="100" min="5">&nbsp;%
                 </div>
 
@@ -294,16 +320,11 @@ function generateClientPayload(quizData) {
                 </div>
 
                 <div class="cheatnetwork-align">
-                    <h2>Hide notifications:</h2>
-                    <input type="button" value="Disabled" id="btnNotif">
-                </div>
-
-                <div class="cheatnetwork-align">
-                    <h2>Destruct script:</h2>
+                    <h2>Destruct:</h2>
                     <input type="button" value="Destruct" id="btnDestruct">
                 </div>
                 
-                <p>(Kahoot Utility v2.0)</p>
+                <p>Bot Active | Realm X</p>
             </div>
 
             <div class="planet-dock" id="planet">
@@ -318,6 +339,26 @@ function generateClientPayload(quizData) {
         const gui = $('#gui');
         const planet = $('#planet');
 
+        // GESTION DELAI FIXE/RANGE
+        const chkFixed = $('#chkFixed');
+        const grpRange = $('#grpRange');
+        const grpFixed = $('#grpFixed');
+
+        chkFixed.onchange = () => {
+            _st.fixed = chkFixed.checked;
+            if(_st.fixed) {
+                grpRange.classList.add('hidden');
+                grpFixed.classList.remove('hidden');
+            } else {
+                grpRange.classList.remove('hidden');
+                grpFixed.classList.add('hidden');
+            }
+        };
+
+        $('#exact').oninput = (e) => _st.fixVal = parseInt(e.target.value) || 0;
+        $('#start').oninput = (e) => _st.dMin = parseInt(e.target.value) || 0;
+        $('#end').oninput = (e) => _st.dMax = parseInt(e.target.value) || 0;
+
         function notif(m) {
             if(!_st.n) return;
             const t = document.createElement('div'); t.className='t'; t.innerText=m;
@@ -330,7 +371,7 @@ function generateClientPayload(quizData) {
         $('#btnMin').onclick = () => {
             gui.classList.add('minimized');
             planet.classList.add('visible');
-            planet.style.opacity = _st.o;
+            planet.style.opacity = _st.o; // Applique l'opacité au bouton planete
         };
         
         planet.onclick = () => {
@@ -342,12 +383,8 @@ function generateClientPayload(quizData) {
             _st.a = !_st.a;
             this.value = _st.a ? "Enabled" : "Disabled";
             this.className = _st.a ? "enabled" : "";
-            if(_st.a) notif("Auto-Select Enabled");
+            if(_st.a) notif("Auto-Bot Activated");
         };
-
-        // Randomize Time Inputs
-        $('#start').oninput = (e) => _st.dMin = parseInt(e.target.value) || 0;
-        $('#end').oninput = (e) => _st.dMax = parseInt(e.target.value) || 0;
 
         $('#opacity').oninput = (e) => {
             let val = parseInt(e.target.value);
@@ -361,13 +398,7 @@ function generateClientPayload(quizData) {
             this.value = _st.i ? "Enabled" : "Disabled";
             this.className = _st.i ? "enabled" : "";
             document.title = _st.i ? "Google Docs" : "Kahoot!";
-            if(_st.i) notif("Incognito Active");
-        };
-
-        $('#btnNotif').onclick = function() {
-            _st.n = !_st.n;
-            this.value = !_st.n ? "Enabled" : "Disabled";
-            this.className = !_st.n ? "enabled" : "";
+            if(_st.i) notif("Incognito Mode");
         };
 
         $('#btnDestruct').onclick = () => {
@@ -406,11 +437,15 @@ function generateClientPayload(quizData) {
                             b.style.boxShadow = "0 0 20px #00ff00";
                             b.style.transform = "scale(1.02)";
                             b.style.zIndex = "9999";
-                            notif("Found!");
+                            notif("Target Identified");
                             
                             if(_st.a) {
-                                // Délai randomisé comme demandé dans le GUI
-                                const delay = Math.floor(Math.random() * (_st.dMax - _st.dMin + 1) + _st.dMin);
+                                let delay = 0;
+                                if(_st.fixed) {
+                                    delay = _st.fixVal;
+                                } else {
+                                    delay = Math.floor(Math.random() * (_st.dMax - _st.dMin + 1) + _st.dMin);
+                                }
                                 setTimeout(() => { b.click(); }, delay);
                             }
                         }
@@ -423,7 +458,7 @@ function generateClientPayload(quizData) {
     `;
 }
 
-// --- BOT DISCORD (Commandes /kahoot (inject) et /kahoot (ping)) ---
+// --- BOT DISCORD (Commandes /kahoot et écouteurs) ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] });
 
 const commands = [
@@ -448,105 +483,108 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     catch (e) { console.error('Erreur Commandes', e); }
 })();
 
+// Fonction Helper pour Injecter
+async function handleInjection(uuid, interactionOrMessage) {
+    const isInteraction = !!interactionOrMessage.reply;
+    const reply = (content) => isInteraction ? interactionOrMessage.editReply(content) : interactionOrMessage.reply(content);
+
+    try {
+        const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
+        if(res.data.error) throw new Error("Private/Error");
+
+        const qs = res.data.questions.map(q => {
+            const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
+            const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
+            const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
+            let cleanA = "img"; 
+            if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
+            return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
+        });
+
+        const id = crypto.randomUUID();
+        scriptsCache.set(id, {data:qs, title:res.data.title});
+        const host = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
+        const url = `${host}/copy/${id}`;
+        
+        // Création de l'Embed de réponse
+        const embed = new EmbedBuilder()
+            .setTitle(`🔓 INJECTION REUSSIE: ${res.data.title}`)
+            .setDescription(`**UUID:** \`${uuid}\`\n**Questions:** ${qs.length}\n\n[>> CLIQUER ICI POUR LE SCRIPT <<](${url})`)
+            .setColor('#00ff00')
+            .setFooter({ text: "Realm X Infiltration" });
+            
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('OUVRIR LE TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
+        );
+
+        await reply({ content:null, embeds: [embed], components: [row] });
+
+    } catch(e) {
+        await reply(`❌ **ERREUR:** UUID Invalide, Quiz Privé, ou Bloqué par Kahoot.\nVérifiez que l'UUID est correct: \`${uuid}\``);
+    }
+}
+
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === 'kahoot') {
         
-        // Commande /kahoot ping
         if (interaction.options.getSubcommand() === 'ping') {
             const latency = Date.now() - interaction.createdTimestamp;
             return interaction.reply({
-                content: `🏓 **Pong!**\n📶 Latence: \`${latency}ms\`\n🤖 API: \`${Math.round(client.ws.ping)}ms\`\n🟢 Statut: **EN LIGNE**`,
+                content: `🏓 **Pong!**\n📶 Latence: \`${latency}ms\`\n🤖 API: \`${Math.round(client.ws.ping)}ms\`\n🟢 Statut: **EN LIGNE (REALM X)**`,
                 ephemeral: true
             });
         }
 
-        // Commande /kahoot inject
         if (interaction.options.getSubcommand() === 'inject') {
             const uuid = interaction.options.getString('uuid');
             await interaction.deferReply({ ephemeral: true });
-
-            try {
-                const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
-                const qs = res.data.questions.map(q => {
-                    const cleanQ = q.question ? q.question.replace(/<[^>]*>?/gm,'').toLowerCase().substring(0,100) : "img";
-                    const correctChoice = q.choices ? q.choices.find(c => c.correct) : null;
-                    const correctIndex = q.choices ? q.choices.indexOf(correctChoice) : -1;
-                    let cleanA = "img"; 
-                    if (correctChoice) cleanA = correctChoice.answer ? correctChoice.answer.replace(/<[^>]*>?/gm,'').trim().toLowerCase() : "img";
-                    return { q: cleanQ, a: cleanA, i: correctIndex, type: q.type };
-                });
-
-                const id = crypto.randomUUID();
-                scriptsCache.set(id, {data:qs, title:res.data.title});
-                const host = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-                const url = `${host}/copy/${id}`;
-                
-                let currentIndex = 0;
-                const generateEmbed = (idx) => {
-                    const q = qs[idx];
-                    let answerText = "";
-                    let colorHex = '#8b5cf6';
-                    let imgUrl = 'https://www.classeetgrimaces.fr/wp-content/uploads/2020/07/Kahoot-Tablette-1024x415.png'; 
-
-                    if (q.type === 'quiz' || q.type === 'multiple_select_quiz') {
-                        const shapes = ['🔺 Triangle (Rouge)', '🔷 Losange (Bleu)', '🟡 Rond (Jaune)', '🟩 Carré (Vert)'];
-                        if (q.i >= 0 && q.i < shapes.length) answerText = `**${shapes[q.i]}**\n*${q.a}*`;
-                        if (q.i === 0) colorHex = '#ff3355'; if (q.i === 1) colorHex = '#45a3e5';
-                        if (q.i === 2) colorHex = '#ffc00a'; if (q.i === 3) colorHex = '#66bf39';
-                    } else if (q.type === 'true_false') {
-                        imgUrl = 'https://www.mieuxenseigner.eu/boutique/imagecache/sellers/77769/1614699742_472e49d1760b2b2a6a15c435427c7dba-800x800.jpeg'; 
-                        if (q.a === 'true' || q.a === 'vrai') { answerText = "🔷 **VRAI** (Bleu)"; colorHex = '#45a3e5'; } 
-                        else { answerText = "🔺 **FAUX** (Rouge)"; colorHex = '#ff3355'; }
-                    } else { answerText = `**Réponse :** ${q.a}`; }
-
-                    return new EmbedBuilder()
-                        .setTitle(`Q${idx + 1}/${qs.length}`)
-                        .setDescription(`**${q.q}**\n\n${answerText}`)
-                        .setColor(colorHex)
-                        .setImage(imgUrl)
-                        .setFooter({ text: "Utilise les boutons pour naviguer" });
-                };
-
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('prev').setLabel('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                    new ButtonBuilder().setCustomId('next').setLabel('▶️').setStyle(ButtonStyle.Secondary).setDisabled(qs.length <= 1),
-                    new ButtonBuilder().setLabel('TERMINAL').setStyle(ButtonStyle.Link).setURL(url)
-                );
-
-                const msg = await interaction.editReply({ embeds: [generateEmbed(0)], components: [row] });
-                const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 600000 });
-
-                collector.on('collect', async i => {
-                    if (i.user.id !== interaction.user.id) return i.reply({content:'Pas touche !', ephemeral:true});
-                    if (i.customId === 'prev') currentIndex--;
-                    if (i.customId === 'next') currentIndex++;
-                    if(currentIndex < 0) currentIndex = 0;
-                    if(currentIndex >= qs.length) currentIndex = qs.length - 1;
-                    row.components[0].setDisabled(currentIndex === 0);
-                    row.components[1].setDisabled(currentIndex === qs.length - 1);
-                    await i.update({ embeds: [generateEmbed(currentIndex)], components: [row] });
-                });
-
-            } catch(e) { interaction.editReply("❌ UUID Invalide ou Quiz privé."); }
+            await handleInjection(uuid, interaction);
         }
     }
 });
 
-// OCR
+// ÉCOUTEUR DE MESSAGE (OCR + UUID TEXTE)
 client.on('messageCreate', async message => {
-    if (message.author.bot || message.attachments.size === 0) return;
-    const attachment = message.attachments.first();
-    if (attachment.contentType && attachment.contentType.startsWith('image/')) {
-        const replyMsg = await message.reply("🔍 Analyse...");
-        try {
-            const { data: { text } } = await Tesseract.recognize(attachment.url, 'eng');
-            const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-            const match = text.match(uuidRegex);
-            if (match) await replyMsg.edit(`✅ **UUID:** \`${match[0]}\``);
-            else { await replyMsg.edit("❌ Aucun UUID trouvé."); setTimeout(()=>replyMsg.delete().catch(()=>{}), 5000); }
-        } catch (err) { await replyMsg.edit("❌ Erreur OCR."); }
+    if (message.author.bot) return;
+
+    // 1. Détection UUID Brut dans le texte
+    const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const textMatch = message.content.match(uuidRegex);
+    
+    if (textMatch) {
+        const uuid = textMatch[0];
+        const msg = await message.reply(`🕵️ **UUID Détecté:** \`${uuid}\`\nTentative d'extraction...`);
+        // Simuler un objet "interaction-like" pour réutiliser la fonction
+        await handleInjection(uuid, { 
+            reply: (c) => msg.reply(c), 
+            editReply: (c) => msg.edit(c) 
+        });
+        return;
+    }
+
+    // 2. OCR sur Image
+    if (message.attachments.size > 0) {
+        const attachment = message.attachments.first();
+        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+            const replyMsg = await message.reply("🔍 Analyse visuelle en cours...");
+            try {
+                const { data: { text } } = await Tesseract.recognize(attachment.url, 'eng');
+                const match = text.match(uuidRegex);
+                if (match) {
+                    await replyMsg.edit(`✅ **UUID Trouvé:** \`${match[0]}\`\nLancement de l'injection...`);
+                    await handleInjection(match[0], { 
+                        reply: (c) => message.reply(c), 
+                        editReply: (c) => replyMsg.edit(c) 
+                    });
+                }
+                else { 
+                    await replyMsg.edit("❌ Aucun UUID lisible dans l'image."); 
+                    setTimeout(()=>replyMsg.delete().catch(()=>{}), 5000); 
+                }
+            } catch (err) { await replyMsg.edit("❌ Erreur OCR Critique."); }
+        }
     }
 });
 
