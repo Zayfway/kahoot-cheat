@@ -333,12 +333,35 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true))].map(c=>c.toJSON());
+// Ajout de la commande /ping
+const commands = [
+    new SlashCommandBuilder()
+        .setName('kahoot')
+        .setDescription('Hack Menu (UUID Only)')
+        .addStringOption(o => o.setName('uuid').setDescription('UUID du quiz').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Vérifier la connexion du bot')
+].map(c => c.toJSON());
+
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-(async()=>{try{await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commands})}catch(e){}})();
+
+(async () => {
+    try { await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }); } 
+    catch (e) { console.error('Erreur Commandes', e); }
+})();
 
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand()) {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'ping') {
+        return interaction.reply({ 
+            content: `🏓 **Pong !**\n✅ Bot en ligne.\n⚡ Latence : ${Date.now() - interaction.createdTimestamp}ms\nAPI : ${Math.round(client.ws.ping)}ms`, 
+            ephemeral: true 
+        });
+    }
+
+    if (interaction.commandName === 'kahoot') {
         const uuid = interaction.options.getString('uuid');
         await interaction.deferReply({ ephemeral: true });
         // Appel de la logique principale
