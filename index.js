@@ -367,10 +367,7 @@ client.on('messageCreate', async message => {
                 const match = text.match(uuidRegex);
 
                 if (match) {
-                    await replyMsg.edit(`✅ **UUID Détecté :** \`${match[0]}\`\nGénération du script...`);
-                    // On simule une interaction pour réutiliser la logique
-                    // Note: Il faut adapter processKahootRequest pour accepter un message classique
-                    // Pour simplifier ici, on renvoie juste l'UUID à l'utilisateur
+                    await replyMsg.edit(`✅ **UUID Détecté !**\n\n\`${match[0]}\`\n\nCopie-le et lance la commande : \`/kahoot uuid:${match[0]}\``);
                 } else {
                     await replyMsg.edit("❌ Aucun UUID Kahoot détecté dans cette image.");
                     setTimeout(() => replyMsg.delete().catch(()=>{}), 5000);
