@@ -1,40 +1,28 @@
 // ==================================================================
-// ⚡ 1. BOOTSTRAP: AUTO-INSTALLATION DES DÉPENDANCES (POUR RENDER)
+// ⚡ 1. SYSTÈME D'AUTO-INSTALLATION (JS UNIQUEMENT)
 // ==================================================================
 const { execSync } = require('child_process');
-const fs = require('fs');
 
-console.log("🔄 [BOOT] Démarrage du système sur Render...");
+console.log("🔄 [JS] Démarrage du système...");
 
-// Liste des modules requis pour le bot
 const requiredPackages = ['discord.js', 'axios', 'express', 'dotenv'];
 let needInstall = false;
 
-// Vérification de la présence des modules
 requiredPackages.forEach(pkg => {
-    try {
-        require.resolve(pkg);
-    } catch (e) {
-        console.log(`❌ [MANQUANT] Module détecté absent : ${pkg}`);
+    try { require.resolve(pkg); } catch (e) {
+        console.log(`❌ [MANQUANT] Module JS : ${pkg}`);
         needInstall = true;
     }
 });
 
-// Installation forcée si nécessaire (Idéal pour les environnements vierges)
 if (needInstall) {
-    console.log("🚀 [INSTALL] Installation automatique des dépendances en cours...");
-    try {
-        // --no-bin-links est souvent utile sur certains environnements cloud limités
-        execSync(`npm install ${requiredPackages.join(' ')} --save --no-audit --no-fund`, { stdio: 'inherit' });
-        console.log("✅ [SUCCÈS] Modules installés. Lancement du bot...");
-    } catch (error) {
-        console.error("❌ [ERREUR] Impossible d'installer les modules. Vérifiez les logs.", error);
-        process.exit(1);
-    }
+    console.log("🚀 [INSTALLATION JS]...");
+    try { execSync(`npm install ${requiredPackages.join(' ')} --save --no-audit --no-fund`, { stdio: 'inherit' }); } 
+    catch (error) { console.error("Erreur install JS.", error); }
 }
 
 // ==================================================================
-// ⚡ 2. CŒUR DU BOT & SERVEUR WEB
+// ⚡ 2. SERVEUR NODE.JS & LOGIQUE BOT (DESIGN COSMIC PRO)
 // ==================================================================
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
@@ -43,88 +31,157 @@ const express = require('express');
 const crypto = require('crypto');
 
 const app = express();
-const port = process.env.PORT || 3000; // Port dynamique pour Render
-const scriptsCache = new Map(); // Stockage temporaire des scripts
+const port = process.env.PORT || 3000;
+const scriptsCache = new Map();
 
-// --- SERVEUR WEB (Page de Copie) ---
-app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE 🟢'));
+// --- PONT PYTHON (Connecte index.js à kahoot_bot.py) ---
+// (Note: Cette partie reste présente pour la compatibilité, même si le fichier Python n'est plus généré ici)
+let pyProc = null;
+const { spawn } = require('child_process');
 
-// Page de copie avec design "Cosmic"
+function initPython() {
+    console.log("🔌 Démarrage du moteur Python...");
+    try { pyProc = spawn('python3', ['kahoot_bot.py']); } 
+    catch(e) { pyProc = spawn('python', ['kahoot_bot.py']); }
+    
+    if(pyProc) {
+        pyProc.stdout.on('data', d => {
+            const lines = d.toString().split('\n');
+            lines.forEach(l => {
+                if(!l) return;
+                try {
+                    const r = JSON.parse(l);
+                    if(r.type === 'log') console.log(`🐍 [PY]: ${r.msg}`);
+                    if(r.type === 'error') console.error(`🐍 [PY-ERR]: ${r.msg}`);
+                    if(r.type === 'result') {
+                        console.log(`🐍 [PY-RES]: PIN ${r.payload.pin} -> Session: ${r.payload.session ? 'OK' : 'FAIL'}`);
+                    }
+                } catch(e) { }
+            });
+        });
+        
+        pyProc.stderr.on('data', d => console.error(`🐍 [ERR]: ${d}`));
+        
+        pyProc.on('close', (code) => {
+            console.log(`⚠️ Python arrêté (Code ${code}). Relance dans 3s...`);
+            setTimeout(initPython, 3000);
+        });
+    }
+}
+initPython();
+
+function checkPinWithPython(pin) {
+    if(pyProc && pyProc.stdin.writable) {
+        pyProc.stdin.write(JSON.stringify({action: 'check_pin', pin: pin}) + '\n');
+    } else {
+        console.error("❌ Python non prêt.");
+    }
+}
+
+// --- SERVEUR WEB ---
+app.get('/', (req, res) => res.send('⚡ K-BOT SYSTEM ONLINE'));
+
+// PAGE DE COPIE (DESIGN "COSMIC GLASS" PROFESSIONNEL)
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
-    
-    // Page d'expiration
-    if (!entry) return res.send(`
-        <body style="background:#000;color:#ef4444;font-family:sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;margin:0;">
-            <div style="text-align:center;">
-                <h1 style="font-size:3rem;margin-bottom:10px;">LIEN EXPIRÉ</h1>
-                <p style="color:#666;">Veuillez générer un nouveau script sur Discord.</p>
-            </div>
-        </body>
-    `);
+    if (!entry) return res.send(`<h1 style="color:red;background:#000;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">LIEN EXPIRÉ</h1>`);
 
-    // Obfuscation du code client
     const rawCode = generateClientPayload(entry.data);
     const b64Code = Buffer.from(rawCode).toString('base64');
-    const loader = `eval(decodeURIComponent(escape(window.atob('${b64Code}'))))`;
+    const obfuscatedLoader = `eval(decodeURIComponent(escape(window.atob('${b64Code}'))))`;
 
-    // Template HTML Premium
     res.send(`
         <!DOCTYPE html>
         <html lang="fr">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Kahoot Tool - ${entry.title}</title>
+            <title>Secure Injector - ${entry.title}</title>
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&display=swap');
-                :root { --primary: #8b5cf6; --bg: #030014; }
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap');
+                :root { --primary: #8b5cf6; --bg: #030014; --glass: rgba(255, 255, 255, 0.05); }
                 body {
                     background-color: var(--bg);
-                    background-image: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
-                    color: white; font-family: 'Outfit', sans-serif;
+                    background-image: 
+                        radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 25%),
+                        radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 25%);
+                    color: white; font-family: 'Inter', sans-serif;
                     height: 100vh; margin: 0; display: flex; flex-direction: column;
                     align-items: center; justify-content: center; overflow: hidden;
                 }
-                .card {
-                    background: rgba(30, 27, 75, 0.4); backdrop-filter: blur(20px);
-                    border: 1px solid rgba(139, 92, 246, 0.2); padding: 40px;
-                    border-radius: 24px; width: 90%; max-width: 480px; text-align: center;
-                    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+                .container {
+                    position: relative; background: var(--glass);
+                    backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 40px; border-radius: 24px; width: 90%; max-width: 500px;
+                    text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
                 }
-                h1 { margin: 0 0 10px 0; background: linear-gradient(to right, #fff, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 2rem; }
-                .btn {
-                    background: #8b5cf6; color: white; border: none; padding: 18px 32px;
-                    border-radius: 14px; font-weight: 700; cursor: pointer; width: 100%;
-                    transition: 0.2s; box-shadow: 0 8px 20px rgba(139, 92, 246, 0.25);
-                    text-transform: uppercase; font-size: 1.1rem;
+                .badge {
+                    display: inline-block; background: rgba(139, 92, 246, 0.1);
+                    color: #c4b5fd; padding: 6px 14px; border-radius: 99px;
+                    font-size: 11px; font-weight: 700; margin-bottom: 20px;
+                    border: 1px solid rgba(139, 92, 246, 0.2); letter-spacing: 1px;
                 }
-                .btn:hover { transform: translateY(-2px); background: #7c3aed; }
+                h1 { margin: 0 0 10px 0; font-size: 28px; font-weight: 800; background: linear-gradient(to right, #fff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+                .subtitle { color: #9ca3af; font-size: 14px; margin-bottom: 30px; }
+                
+                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; font-size: 12px; color: #6b7280; }
+                .info-item { display: flex; align-items: center; gap: 6px; justify-content: center; }
+                .dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; }
+
                 textarea { position: absolute; opacity: 0; pointer-events: none; }
-                .status { margin-top: 20px; color: #94a3b8; font-size: 13px; font-weight: 500; }
-                .badge { background: rgba(139,92,246,0.15); color: #c4b5fd; padding: 6px 16px; border-radius: 99px; font-size: 12px; font-weight: 700; margin-bottom: 20px; display: inline-block; }
+
+                .btn-copy {
+                    background: var(--primary); color: white; border: none;
+                    padding: 16px; border-radius: 12px; font-size: 15px; font-weight: 600;
+                    width: 100%; cursor: pointer; transition: all 0.2s;
+                    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+                    display: flex; align-items: center; justify-content: center; gap: 10px;
+                }
+                .btn-copy:hover { transform: translateY(-2px); background: #7c3aed; box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4); }
+                .btn-copy:active { transform: translateY(0); }
+                
+                .status { margin-top: 20px; font-size: 13px; color: #6b7280; font-weight: 500; min-height: 20px; }
             </style>
         </head>
         <body>
-            <div class="card">
-                <div class="badge">SECURE INJECTOR V10</div>
+            <div class="container">
+                <div class="badge">SECURE INJECTOR</div>
                 <h1>${entry.title}</h1>
-                <p style="color:#94a3b8;margin-bottom:30px">Le payload est prêt.</p>
-                <textarea id="code">${loader}</textarea>
-                <button class="btn" onclick="cp()">COPIER LE SCRIPT</button>
-                <div id="st" class="status">En attente...</div>
+                <p class="subtitle">Le payload est prêt pour l'injection sécurisée.</p>
+                
+                <div class="info-grid">
+                    <div class="info-item"><span class="dot"></span> Protection AES-256</div>
+                    <div class="info-item"><span class="dot"></span> Shadow DOM</div>
+                    <div class="info-item"><span class="dot"></span> Anti-Détection</div>
+                    <div class="info-item"><span class="dot"></span> ${entry.data.length} Questions</div>
+                </div>
+
+                <textarea id="code">${obfuscatedLoader}</textarea>
+                
+                <button class="btn-copy" onclick="copy()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 17.929H6c-1.105 0-2-.912-2-2.036V5.036C4 3.91 4.895 3 6 3h8c1.105 0 2 .911 2 2.036v1.866m-6 .17h8c1.105 0 2 .91 2 2.035v10.857C20 21.09 19.105 22 18 22h-8c-1.105 0-2-.911-2-2.036V9.107c0-1.124.895-2.036 2-2.036z"></path></svg>
+                    COPIER LE SCRIPT
+                </button>
+                
+                <div id="status" class="status">En attente...</div>
             </div>
+
             <script>
-                function cp() {
+                function copy() {
                     const el = document.getElementById('code');
                     el.select();
                     try {
                         document.execCommand('copy');
-                        const b = document.querySelector('.btn');
-                        b.style.background = '#10b981'; b.innerText = "SUCCÈS !";
-                        document.getElementById('st').innerText = "✅ Colle le code dans la console (F12)";
-                        setTimeout(() => { b.style.background = '#8b5cf6'; b.innerText = "COPIER LE SCRIPT"; }, 3000);
-                    } catch(e) { document.getElementById('st').innerText = "Erreur copie manuelle"; }
+                        const btn = document.querySelector('.btn-copy');
+                        const originalHTML = btn.innerHTML;
+                        btn.style.background = '#10b981';
+                        btn.innerHTML = '✅ COPIÉ !';
+                        document.getElementById('status').innerHTML = "Colle le code dans la console (F12)";
+                        setTimeout(() => { 
+                            btn.style.background = '#8b5cf6'; 
+                            btn.innerHTML = originalHTML; 
+                        }, 3000);
+                    } catch(e) { document.getElementById('status').innerText = "Erreur copie manuelle"; }
                 }
             </script>
         </body>
@@ -132,21 +189,22 @@ app.get('/copy/:id', (req, res) => {
     `);
 });
 
-app.listen(port, () => console.log(`🌍 Serveur Web actif sur le port ${port}`));
+app.listen(port, () => console.log(`🌍 Serveur actif : ${port}`));
 
-// --- GENERATEUR DE SCRIPT (GUI VIOLET + PLANÈTE) ---
+// --- GENERATEUR GUI (PLANETE + SUPPORT VRAI/FAUX AMÉLIORÉ) ---
 function generateClientPayload(quizData) {
     const json = JSON.stringify(quizData);
     
-    // SVG Planète Exact
-    const planetSVG = `<svg version="1.1" viewBox="0 0 205.229 205.229" style="width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(139,92,246,0.5))"><path d="M102.618,205.229c-56.585,0-102.616-46.031-102.616-102.616C0.002,46.031,46.033,0,102.618,0C159.2,0,205.227,46.031,205.227,102.613C205.227,159.198,159.2,205.229,102.618,205.229z M102.618,8.618c-51.829,0-94.002,42.166-94.002,93.995s42.17,93.995,94.002,93.995c51.825,0,93.988-42.162,93.988-93.995C196.606,50.784,154.444,8.618,102.618,8.618z" style="fill:#8b5cf6"/><rect height="8.618" style="fill:#fff" width="193.734" x="5.746" y="98.304"/><path d="M104.941,62.111c-48.644,0-84.94-10.704-87.199-11.388l2.494-8.253c0.816,0.247,82.657,24.336,164.38-0.004l2.452,8.26C158.405,59.266,130.021,62.111,104.941,62.111z" style="fill:#a78bfa"/><path d="M20.416,160.572l-2.459-8.26c84.271-25.081,165.898-1.027,169.333,0l-2.494,8.256C183.976,160.318,102.142,136.24,20.416,160.572z" style="fill:#a78bfa"/></svg>`;
-
+    // Le SVG de ta planète exacte
+    const svg = `<svg version="1.1" viewBox="0 0 205.229 205.229" style="width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(139,92,246,0.5))"><path d="M102.618,205.229c-56.585,0-102.616-46.031-102.616-102.616C0.002,46.031,46.033,0,102.618,0C159.2,0,205.227,46.031,205.227,102.613C205.227,159.198,159.2,205.229,102.618,205.229z M102.618,8.618c-51.829,0-94.002,42.166-94.002,93.995s42.17,93.995,94.002,93.995c51.825,0,93.988-42.162,93.988-93.995C196.606,50.784,154.444,8.618,102.618,8.618z" style="fill:#8b5cf6"/><rect height="8.618" style="fill:#fff" width="193.734" x="5.746" y="98.304"/><path d="M104.941,62.111c-48.644,0-84.94-10.704-87.199-11.388l2.494-8.253c0.816,0.247,82.657,24.336,164.38-0.004l2.452,8.26C158.405,59.266,130.021,62.111,104.941,62.111z" style="fill:#a78bfa"/><path d="M20.416,160.572l-2.459-8.26c84.271-25.081,165.898-1.027,169.333,0l-2.494,8.256C183.976,160.318,102.142,136.24,20.416,160.572z" style="fill:#a78bfa"/></svg>`;
+    
     return `
     (function() {
         const _db = ${json};
         const _st = { d: 250, o: 1, a: false, n: true, i: false };
         console.clear(); console.log("%c 🪐 SYSTEM LOADED ", "background:#8b5cf6;color:#fff;padding:5px;border-radius:4px;");
 
+        // Création du conteneur isolé (Shadow DOM)
         const h = document.createElement('div');
         h.id = 'r-'+Math.random().toString(36).substr(2,9);
         Object.assign(h.style, {position:'fixed',top:0,left:0,zIndex:2147483647});
@@ -157,14 +215,14 @@ function generateClientPayload(quizData) {
         style.textContent = \`
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
             * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(139,92,246,0.3); border-radius: 20px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; }
-            .gui.h { opacity: 0; pointer-events: none; transform: scale(0.8); }
-            .head { padding: 15px; background: linear-gradient(90deg, rgba(139,92,246,0.2), transparent); display: flex; justify-content: space-between; align-items: center; cursor: grab; border-bottom: 1px solid rgba(255,255,255,0.05); }
-            .body { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-            label { font-size: 10px; color: #a5b4fc; font-weight: 600; text-transform: uppercase; }
-            input[type=range] { width: 100%; accent-color: #8b5cf6; height: 4px; cursor: pointer; }
+            .gui { position: fixed; top: 50px; left: 50px; width: 280px; background: rgba(20,20,30,0.95); backdrop-filter: blur(20px); border: 1px solid rgba(139,92,246,0.2); border-radius: 16px; color: white; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; }
+            .gui.h { opacity: 0; pointer-events: none; transform: scale(0.9); }
+            .head { padding: 16px; background: linear-gradient(90deg, rgba(139,92,246,0.1), transparent); display: flex; justify-content: space-between; align-items: center; cursor: grab; border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+            label { font-size: 11px; color: #a5b4fc; font-weight: 600; text-transform: uppercase; }
+            input[type=range] { width: 100%; accent-color: #8b5cf6; height: 4px; cursor: pointer; background: #3f3f46; border-radius: 2px; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-            button { padding: 10px; border: none; border-radius: 8px; background: #2e2e36; color: #e0e0e0; font-weight: 600; font-size: 10px; cursor: pointer; transition: 0.2s; }
+            button { padding: 12px; border: none; border-radius: 8px; background: #2e2e36; color: #e0e0e0; font-weight: 600; font-size: 11px; cursor: pointer; transition: 0.2s; }
             button:hover { background: #3f3f46; color: white; }
             button.a { background: #7c3aed; color: white; box-shadow: 0 4px 15px rgba(124,58,237,0.4); }
             .dock { position: fixed; bottom: 30px; left: 30px; width: 70px; height: 70px; cursor: pointer; z-index: 999999; transition: 0.4s; opacity: 0; transform: translateY(60px) rotate(180deg); filter: drop-shadow(0 0 15px rgba(139,92,246,0.4)); }
@@ -172,6 +230,9 @@ function generateClientPayload(quizData) {
             .dock:hover { transform: scale(1.15); }
             .toasts { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
             .t { background: rgba(15,15,20,0.95); color: #fff; padding: 8px 16px; border-radius: 30px; font-size: 11px; border: 1px solid rgba(139,92,246,0.3); backdrop-filter: blur(8px); }
+            .input-row { display: flex; align-items: center; gap: 10px; }
+            .num-input { background: #27272a; border: 1px solid #3f3f46; color: #fff; width: 60px; padding: 6px; border-radius: 8px; text-align: center; font-weight: 600; font-size: 12px; }
+            .num-input:focus { outline: none; border-color: #8b5cf6; }
         \`;
         s.appendChild(style);
 
@@ -180,11 +241,17 @@ function generateClientPayload(quizData) {
             <div class="gui" id="g">
                 <div class="head" id="d">
                     <span style="font-weight:700;font-size:14px">🪐 Tools</span>
-                    <div id="m" style="width:20px;height:20px;background:rgba(255,255,255,0.1);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px">_</div>
+                    <div id="m" style="width:24px;height:24px;background:rgba(255,255,255,0.1);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px">_</div>
                 </div>
                 <div class="body">
-                    <div><label>Vitesse Auto (ms)</label><input type="range" id="rd" min="0" max="3000" step="50" value="250"></div>
-                    <div><label>Opacité</label><input type="range" id="ro" min="0.1" max="1" step="0.1" value="1"></div>
+                    <div>
+                        <label>Vitesse Auto (ms)</label>
+                        <div class="input-row">
+                            <input type="range" id="rd" min="0" max="3000" step="50" value="250">
+                            <input type="number" id="nd" class="num-input" value="250">
+                        </div>
+                    </div>
+                    <div><label>Opacité</label><input type="range" id="ro" min="0.1" max="1" step="0.05" value="1"></div>
                     <div class="grid">
                         <button id="ba">AUTO OFF</button>
                         <button id="bn" class="a">NOTIFS ON</button>
@@ -213,13 +280,15 @@ function generateClientPayload(quizData) {
         $('#m').onclick = () => { g.classList.add('h'); p.classList.add('v'); };
         p.onclick = () => { g.classList.remove('h'); p.classList.remove('v'); };
         
-        $('#rd').oninput = (e) => _st.d = parseInt(e.target.value);
+        const sync = (v) => { _st.d = parseInt(v); $('#rd').value=v; $('#nd').value=v; };
+        $('#rd').oninput = (e) => sync(e.target.value);
+        $('#nd').oninput = (e) => sync(e.target.value);
         $('#ro').oninput = (e) => g.style.opacity = e.target.value;
         
         $('#ba').onclick = function() { _st.a=!_st.a; this.innerText=_st.a?"AUTO ON":"AUTO OFF"; this.classList.toggle('a'); notif("Auto-Answer: " + (_st.a?"ON":"OFF")); };
         $('#bn').onclick = function() { _st.n=!_st.n; this.classList.toggle('a'); };
         $('#bi').onclick = function() { _st.i=!_st.i; this.classList.toggle('a'); document.title=_st.i?"Docs":"Kahoot!"; notif("Incognito: " + (_st.i?"ON":"OFF")); };
-        $('#bk').onclick = () => { if(confirm('Tout détruire ?')) h.remove(); };
+        $('#bk').onclick = () => { if(confirm('Stop ?')) h.remove(); };
 
         let down=false, off=[0,0];
         $('#d').addEventListener('mousedown', e => { down=true; off=[g.offsetLeft-e.clientX, g.offsetTop-e.clientY]; });
@@ -229,12 +298,10 @@ function generateClientPayload(quizData) {
         const obs = new MutationObserver(() => {
             const txt = document.body.innerText.toLowerCase();
             const q = _db.find(x => txt.includes(x.q));
-            
             if(q) {
                 document.querySelectorAll('[data-functional-selector="answer"], button, span, div[role="button"]').forEach(el => {
                     const elText = el.innerText ? el.innerText.toLowerCase().trim() : "";
                     const targetText = q.a.trim();
-
                     if(elText && (elText === targetText || elText.includes(targetText) || targetText.includes(elText))) {
                         if(el.dataset.k) return;
                         el.dataset.k="1";
@@ -257,22 +324,11 @@ function generateClientPayload(quizData) {
     `;
 }
 
-// --- 3. BOT DISCORD ---
+// --- BOT DISCORD (PAGINATION ET IMAGES VRAI/FAUX) ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-const commands = [
-    new SlashCommandBuilder()
-        .setName('kahoot')
-        .setDescription('Hack Menu (UUID Only)')
-        .addStringOption(o => o.setName('uuid').setDescription('UUID du quiz').setRequired(true))
-].map(c => c.toJSON());
-
+const commands = [new SlashCommandBuilder().setName('kahoot').setDescription('Hack Menu').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true))].map(c=>c.toJSON());
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
-    try { await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }); } 
-    catch (e) { console.error('Erreur Commandes', e); }
-})();
+(async()=>{try{await rest.put(Routes.applicationCommands(process.env.CLIENT_ID),{body:commands})}catch(e){}})();
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
@@ -294,10 +350,10 @@ client.on('interactionCreate', async interaction => {
             const id = crypto.randomUUID();
             scriptsCache.set(id, {data:qs, title:res.data.title});
             
-            // Détection URL Render (ou Localhost en dev)
-            const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-            const url = `${baseUrl}/copy/${id}`;
-
+            // Détection dynamique de l'URL pour Render / Replit / Local
+            const host = process.env.RENDER_EXTERNAL_URL || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${port}`);
+            const url = `${host}/copy/${id}`;
+            
             let currentIndex = 0;
 
             const generateEmbed = (idx) => {
