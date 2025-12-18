@@ -1,23 +1,21 @@
 {
-  "name": "kahoot-elite-v6-sin",
-  "version": "6.0.0",
-  "description": "STI2D SIN Final Project - Network Analysis Tool",
+  "name": "kahoot-hack-elite",
+  "version": "2.0.0",
+  "description": "Projet SIN - Bot Discord & Kahoot Tools",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.14.0",
+    "axios": "^1.6.0",
     "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "axios": "^1.6.2",
     "dotenv": "^16.3.1",
-    "kahoot.js-updated": "^2.3.2",
-    "tesseract.js": "^5.0.4",
-    "systeminformation": "^5.21.22",
-    "random-name": "^0.1.2"
+    "kahoot.js-updated": "^2.3.4"
   },
   "engines": {
     "node": ">=18.0.0"
   }
 }
+
+
