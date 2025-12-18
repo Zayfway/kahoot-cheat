@@ -1,280 +1,260 @@
-/// ==================================================================
-// ⚡ 1. INITIALISATION & ANTI-SLEEP (OPTIMISATION RENDER)
-// ==================================================================
-const { execSync } = require('child_process');
-const fs = require('fs');
-
-const pkgs = ['discord.js', 'axios', 'express', 'dotenv', 'tesseract.js', 'puppeteer']; 
-pkgs.forEach(p => { try { require.resolve(p); } catch(e) { execSync(`npm install ${p} --no-audit --no-fund`); }});
+/**
+ * ⚡ KAHOOT HACK ELITE V4 - FINAL STABLE
+ * Author: Boss & AI
+ * Features: Ghost Resolver, Safe OCR (/tmp fix), Live Logs, Anti-Crash
+ */
 
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Partials } = require('discord.js');
-const axios = require('axios');
 const express = require('express');
-const crypto = require('crypto');
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const axios = require('axios');
+const cors = require('cors');
+const Kahoot = require('kahoot.js-updated');
 const Tesseract = require('tesseract.js');
-const puppeteer = require('puppeteer');
+const si = require('systeminformation');
+const path = require('path');
 
+// --- SYSTÈME DE LOGS EN MÉMOIRE (Circular Buffer) ---
+const MAX_LOGS = 60;
+const logBuffer = [];
+
+function pushLog(type, args) {
+    const timestamp = new Date().toLocaleTimeString('fr-FR');
+    // Conversion propre des objets/erreurs en string
+    const message = args.map(a => {
+        if (a instanceof Error) return `${a.message}\n${a.stack}`;
+        if (typeof a === 'object') return JSON.stringify(a);
+        return a;
+    }).join(' ');
+    
+    const entry = `[${timestamp}] [${type}] ${message}`;
+    logBuffer.push(entry);
+    if (logBuffer.length > MAX_LOGS) logBuffer.shift();
+    
+    // Affichage réel console pour Render Dashboard
+    if(type === 'ERR ') console.error(`[${type}]`, ...args);
+    else console.log(`[${type}]`, ...args);
+}
+
+// Override console
+console.log = (...args) => pushLog('INFO', args);
+console.error = (...args) => pushLog('ERR ', args);
+
+// --- ANTI-CRASH SYSTEM (GLOBAL HANDLERS) ---
+process.on('uncaughtException', (err) => {
+    console.error("🔥 CRITICAL UNCAUGHT ERROR:", err);
+    // On ne quitte PAS le processus, on le garde en vie
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error("🔥 UNHANDLED PROMISE:", reason);
+});
+
+// --- CONFIGURATION ---
+const PORT = process.env.PORT || 3000;
 const app = express();
-const port = process.env.PORT || 3000;
-const scriptsCache = new Map();
-const quizDataState = new Map();
+app.use(cors());
+app.use(express.json());
 
-// --- SYSTÈME ANTI-SOMMEIL H24 ---
-const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
-setInterval(async () => {
-    try { 
-        await axios.get(SERVICE_URL); 
-        console.log("📡 [KEEP-ALIVE] Ping envoyé pour maintenir le service actif.");
-    } catch(e) { console.log("⚠️ [KEEP-ALIVE] Échec du ping (Serveur hors ligne ?)"); }
-}, 300000); // Toutes les 5 minutes
+// --- ETAT GLOBAL ---
+const activeRaids = new Map();
 
 // ==================================================================
-// ⚡ 2. LOGIQUE BOT JOINER & RESOLVER PIN
+// 1. MOTEUR "GHOST RESOLVER" (WS Optimized)
 // ==================================================================
-async function startBotJoiner(pin, baseName, count) {
-    const browser = await puppeteer.launch({
-        headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process']
+async function resolvePinToUUID(pin) {
+    return new Promise((resolve) => {
+        const client = new Kahoot();
+        let resolved = false;
+
+        const cleanup = () => { if (client.socket) client.leave(); };
+        const to = setTimeout(() => { if (!resolved) { cleanup(); resolve(null); } }, 6000);
+
+        client.on("Joined", () => {
+            resolved = true;
+            clearTimeout(to);
+            const data = {
+                uuid: client.quiz ? client.quiz.uuid : null,
+                title: client.quiz ? client.quiz.name : "Inconnu",
+                type: client.quiz ? client.quiz.type : "quiz"
+            };
+            console.log(`🕵️ [GHOST] Extraction PIN ${pin} -> UUID: ${data.uuid}`);
+            cleanup();
+            resolve(data.uuid ? data : null);
+        });
+
+        client.on("Disconnect", (r) => { if (!resolved && r !== "Quiz Locked") console.log(`⚠️ [GHOST] Deco: ${r}`); });
+        client.join(pin, "x_" + Math.floor(Math.random()*999)).catch(() => resolve(null));
     });
-
-    for (let i = 0; i < Math.min(count, 12); i++) {
-        const page = await browser.newPage();
-        try {
-            await page.setRequestInterception(true);
-            page.on('request', r => ['image', 'font', 'media'].includes(r.resourceType()) ? r.abort() : r.continue());
-
-            await page.goto('https://kahoot.it/', { waitUntil: 'networkidle0' });
-            await page.type('input[name="gameId"]', pin.toString());
-            await page.keyboard.press('Enter');
-
-            await page.waitForSelector('input[name="nickname"]', { timeout: 8000 });
-            await page.type('input[name="nickname"]', `${baseName}_${i + 1}`);
-            await page.keyboard.press('Enter');
-
-            await page.waitForFunction(() => window.location.pathname.includes('/instructions'), { timeout: 5000 });
-            console.log(`🤖 Bot ${i + 1} a rejoint.`);
-        } catch (e) { 
-            console.log(`❌ Bot ${i + 1} échec.`);
-            await page.close();
-        }
-    }
-    setTimeout(() => browser.close(), 600000);
-}
-
-// Récupérer l'UUID du quiz via le PIN
-async function getUuidFromPin(pin) {
-    try {
-        const response = await axios.get(`https://kahoot.it/reserve/session/${pin}/?${Date.now()}`);
-        // Le header 'x-kahoot-id' contient parfois l'UUID directement
-        // Sinon, il faut "peek" via une connection socket (non implémenté ici pour stabilité RAM)
-        // Alternative : Utilisation d'un moteur de recherche pour retrouver le quiz public par titre si possible
-        return response.headers['x-kahoot-quizid'] || null;
-    } catch (e) {
-        return null;
-    }
 }
 
 // ==================================================================
-// ⚡ 3. DESIGN RENDER & GÉNÉRATEUR PAYLOAD
+// 2. DISCORD BOT & OCR
 // ==================================================================
-app.get('/', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8"><title>KAHOOT HACK // STATUS</title>
-        <style>
-            body { background: #020617; color: #fff; font-family: 'Inter', sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
-            .box { border: 2px solid #3b82f6; background: rgba(30, 58, 138, 0.1); padding: 50px; border-radius: 30px; text-align: center; box-shadow: 0 0 50px #3b82f633; backdrop-filter: blur(10px); }
-            h1 { font-size: 3rem; background: linear-gradient(90deg, #8b5cf6, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; font-weight: 900; }
-            .status { margin-top: 20px; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; color: #60a5fa; }
-            .dot { width: 12px; height: 12px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: pulse 1.5s infinite; }
-            @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.2); } }
-            p { color: #475569; font-size: 0.8rem; margin-top: 30px; letter-spacing: 1px; }
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h1>KAHOOT HACK</h1>
-            <div class="status"><div class="dot"></div> UNITÉ ACTIVE</div>
-            <p>RENDER CLOUD // ANTI-SLEEP ACTIF</p>
-        </div>
-    </body>
-    </html>
-    `);
-});
-
-app.get('/copy/:id', (req, res) => {
-    const entry = scriptsCache.get(req.params.id);
-    if (!entry) return res.status(404).send("SESSION EXPIRED");
-    const loader = `eval(decodeURIComponent(escape(window.atob('${Buffer.from(generatePayload(entry.data)).toString('base64')}'))))`;
-    res.send(`
-        <body style="background:#020617;color:#fff;padding:50px;text-align:center;font-family:sans-serif;">
-            <h2 style="color:#8b5cf6">TERMINAL D'INJECTION</h2>
-            <p style="color:#64748b">Cliquez pour copier le script du quiz : <b>\${entry.title}</b></p>
-            <button onclick="copy()" id="b" style="padding:15px 30px;background:#8b5cf6;color:#fff;border:none;border-radius:12px;cursor:pointer;font-weight:bold;font-size:16px;">COPIER LE SCRIPT</button>
-            <script>
-                function copy(){
-                    const t=document.createElement('textarea');
-                    t.value=\`${loader}\`;
-                    document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
-                    document.getElementById('b').innerText="SCRIPT COPIÉ !";
-                    document.getElementById('b').style.background="#10b981";
-                }
-            </script>
-        </body>`);
-});
-
-function generatePayload(quizData) {
-    const json = JSON.stringify(quizData);
-    return `
-    (function() {
-        // Fix Amplitude Error
-        window.Amplitude = { init:()=>{}, identify:()=>{}, logEvent:()=>{} };
-        window.Sentry = { init:()=>{} };
-
-        const _db = ${json};
-        const _st = { auto: false, dockOp: 0.8 };
-
-        const rootWrap = document.createElement('div');
-        rootWrap.id = 'kh-hack-' + Date.now();
-        Object.assign(rootWrap.style, { position:'fixed', top:0, left:0, zIndex:2147483647, pointerEvents:'none' });
-        const root = rootWrap.attachShadow({mode:'open'});
-        document.body.appendChild(rootWrap);
-
-        const style = document.createElement('style');
-        style.textContent = \`
-            .ui { pointer-events: auto; position: fixed; top: 20px; right: 20px; width: 280px; background: rgba(10, 10, 25, 0.98); border: 2px solid #3b82f6; border-radius: 20px; color: #fff; padding: 20px; backdrop-filter: blur(10px); box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: 0.3s; font-family: sans-serif; }
-            .ui.hide { transform: translateX(400px); opacity: 0; }
-            .header { border-bottom: 1px solid #1e293b; padding-bottom: 10px; margin-bottom: 15px; cursor: move; display: flex; justify-content: space-between; align-items: center; }
-            .header h1 { font-size: 13px; margin: 0; color: #3b82f6; letter-spacing: 1px; }
-            .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 11px; font-weight: bold; }
-            .btn { background: #1e293b; border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 10px; }
-            .btn.active { background: #2563eb; border-color: #60a5fa; }
-            input[type=range] { width: 80px; accent-color: #3b82f6; cursor: pointer; }
-            .dock { pointer-events: auto; position: fixed; bottom: 20px; left: 20px; width: 42px; height: 42px; background: #3b82f6; border-radius: 12px; display: none; flex-direction: row; align-items: center; justify-content: center; gap: 4px; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: 0.2s; }
-            .dock span { width: 3px; height: 20px; background: #fff; border-radius: 2px; }
-            .dock.show { display: flex; }
-            .btn-dest { color: #ef4444; border-color: #ef444455; width: 100%; margin-top: 10px; }
-        \`;
-        root.appendChild(style);
-
-        const ui = document.createElement('div');
-        ui.className = 'ui';
-        ui.innerHTML = \`
-            <div class="header" id="drag"><h1>KAHOOT HACK ELITE</h1><button class="btn" id="minBtn">MINIMIZE</button></div>
-            <div class="row"><span>AUTO-RÉPONSE</span><button class="btn" id="autoBtn">OFF</button></div>
-            <div class="row"><span>OPACITÉ RAPPEL</span><input type="range" id="opRange" min="5" max="100" value="80"></div>
-            <button class="btn btn-dest" id="destBtn">DESTROY SCRIPT</button>
-        \`;
-        root.appendChild(ui);
-
-        const dock = document.createElement('div');
-        dock.className = 'dock';
-        dock.innerHTML = '<span></span><span></span><span></span>';
-        root.appendChild(dock);
-
-        const forceClick = (el) => {
-            const evts = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click'];
-            evts.forEach(n => el.dispatchEvent(new PointerEvent(n, { bubbles:true, cancelable:true, view:window, isPrimary:true })));
-        };
-
-        root.querySelector('#autoBtn').onclick = function() { _st.auto = !_st.auto; this.innerText = _st.auto ? "ON" : "OFF"; this.classList.toggle('active'); };
-        root.querySelector('#minBtn').onclick = () => { ui.classList.add('hide'); dock.classList.add('show'); };
-        dock.onclick = () => { ui.classList.remove('hide'); dock.classList.remove('show'); };
-        root.querySelector('#opRange').oninput = (e) => { _st.dockOp = e.target.value / 100; dock.style.opacity = _st.dockOp; };
-        root.querySelector('#destBtn').onclick = () => { if(confirm("Détruire toute trace ?")) rootWrap.remove(); };
-
-        setInterval(() => {
-            if(!_st.auto) return;
-            const bt = document.body.innerText.toLowerCase();
-            const q = _db.find(x => bt.includes(x.q));
-            if(q) {
-                document.querySelectorAll('button, [role="button"], [data-functional-selector="answer"]').forEach(b => {
-                    if(b.dataset.rx) return;
-                    const txt = b.innerText.toLowerCase().trim();
-                    const isTF = (q.a === 'true' && (txt === 'vrai' || txt === 'true')) || (q.a === 'false' && (txt === 'faux' || txt === 'false'));
-                    if(txt && (txt === q.a || txt.includes(q.a) || isTF)) {
-                        b.dataset.rx = "1";
-                        b.style.border = "4px solid #3b82f6";
-                        setTimeout(() => forceClick(b), 500);
-                    }
-                });
-            }
-        }, 600);
-    })();
-    `;
-}
-
-// ==================================================================
-// ⚡ 4. DISCORD BOT & COMMANDES
-// ==================================================================
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const commands = [
-    new SlashCommandBuilder().setName('kahoot').setDescription('Kahoot Hack Pro Elite')
-        .addSubcommand(s => s.setName('inject').setDescription('Injection via UUID').addStringOption(o=>o.setName('uuid').setDescription('UUID du quiz').setRequired(true)))
-        .addSubcommand(s => s.setName('solve').setDescription('Résoudre via PIN').addStringOption(o=>o.setName('pin').setDescription('PIN du jeu').setRequired(true)))
-        .addSubcommand(s => s.setName('bots').setDescription('Lancer des bots')
-            .addStringOption(o=>o.setName('pin').setDescription('PIN').setRequired(true))
-            .addStringOption(o=>o.setName('name').setDescription('Pseudo').setRequired(true))
-            .addIntegerOption(o=>o.setName('nombre').setDescription('Quantité')))
-        .addSubcommand(s => s.setName('ping').setDescription('État du bot'))
-].map(c => c.toJSON());
+    new SlashCommandBuilder().setName('kahoot').setDescription('Elite V4 Tools')
+        .addSubcommand(s => s.setName('scan').setDescription('OCR Image -> UUID').addAttachmentOption(o => o.setName('image').setDescription('Lobby Screen').setRequired(true)))
+        .addSubcommand(s => s.setName('resolve').setDescription('PIN -> UUID').addStringOption(o => o.setName('pin').setRequired(true)))
+        .addSubcommand(s => s.setName('raid').setDescription('Bot Flood').addStringOption(o => o.setName('pin').setRequired(true)).addStringOption(o => o.setName('name').setRequired(true)).addIntegerOption(o => o.setName('count').setRequired(true)))
+        .addSubcommand(s => s.setName('ping').setDescription('Status & Logs'))
+];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => { try { await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }); } catch(e){} })();
 
-async function processQuiz(uuid, it, isInteraction = true) {
-    try {
-        const res = await axios.get(`https://play.kahoot.it/rest/kahoots/${uuid}`);
-        const sid = crypto.randomUUID();
-        scriptsCache.set(sid, { 
-            data: res.data.questions.map(q => ({
-                q: q.question ? q.question.replace(/<[^>]*>/g,'').toLowerCase().substring(0,50) : "img",
-                a: q.choices ? q.choices.find(c => c.correct).answer.replace(/<[^>]*>/g,'').toLowerCase().trim() : ""
-            })),
-            title: res.data.title 
-        });
-        const url = `${SERVICE_URL}/copy/${sid}`;
-        const msg = { content: `✅ **Quiz trouvé :** \`${res.data.title}\`\n[ACCÉDER AU TERMINAL D'INJECTION](${url})` };
-        isInteraction ? await it.editReply(msg) : await it.reply(msg);
-    } catch(e) { isInteraction ? await it.editReply("❌ Quiz introuvable.") : await it.reply("❌ Quiz introuvable."); }
-}
-
 client.on('interactionCreate', async it => {
+    if (it.isButton() && it.customId === 'refresh_logs') {
+        const mem = await si.mem();
+        const logsStr = logBuffer.join('\n') || "Logs vides.";
+        const safeLogs = logsStr.length > 1900 ? "..." + logsStr.slice(-1900) : logsStr;
+        
+        const embed = new EmbedBuilder().setColor(0x10b981).setTitle("📡 SERVER LOGS")
+            .setDescription(`\`\`\`bash\n${safeLogs}\n\`\`\``)
+            .setFooter({ text: `RAM: ${(mem.active/1024/1024).toFixed(0)}MB / 512MB` });
+        return await it.update({ embeds: [embed] });
+    }
+
     if (!it.isChatInputCommand()) return;
-    const sub = it.options.getSubcommand();
+    const { commandName, options } = it;
 
-    if (sub === 'ping') {
-        const embed = new EmbedBuilder().setColor(0x3b82f6).setTitle("📡 ÉTAT DU SYSTÈME")
-            .addFields({ name: "RÉSEAU", value: `\`${client.ws.ping}ms\``, inline: true }, { name: "STATUT", value: "🟢 OPÉRATIONNEL", inline: true });
-        it.reply({ embeds: [embed] });
-    }
+    if (commandName === 'kahoot') {
+        const sub = options.getSubcommand();
 
-    if (sub === 'inject') {
-        await it.deferReply({ ephemeral: true });
-        await processQuiz(it.options.getString('uuid'), it);
-    }
+        if (sub === 'ping') {
+            const start = Date.now();
+            await it.reply({ content: '...', fetchReply: true });
+            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('refresh_logs').setLabel('Afficher Logs').setStyle(ButtonStyle.Danger).setEmoji('📜'));
+            const embed = new EmbedBuilder().setColor(0x3b82f6).setTitle("⚡ ELITE V4 STATUS")
+                .addFields(
+                    { name: 'WS Latency', value: `\`${client.ws.ping}ms\``, inline: true },
+                    { name: 'RAM Usage', value: `\`${Math.round(process.memoryUsage().heapUsed/1024/1024)}MB\``, inline: true }
+                );
+            await it.editReply({ content: '', embeds: [embed], components: [row] });
+        }
 
-    if (sub === 'solve') {
-        await it.deferReply({ ephemeral: true });
-        const pin = it.options.getString('pin');
-        const uuid = await getUuidFromPin(pin);
-        if (uuid) await processQuiz(uuid, it);
-        else await it.editReply("❌ Impossible de trouver l'identifiant du quiz via ce PIN. Le quiz est peut-être privé ou protégé.");
-    }
+        if (sub === 'resolve') {
+            await it.deferReply({ ephemeral: true });
+            const result = await resolvePinToUUID(options.getString('pin'));
+            if (result && result.uuid) {
+                const url = `${process.env.RENDER_EXTERNAL_URL}/payload.js`;
+                const embed = new EmbedBuilder().setColor(0x10b981).setTitle(`🔓 ${result.title}`)
+                    .setDescription(`**UUID:** \`${result.uuid}\``).addFields({ name: 'Injector', value: `[Lien Script](${url})` });
+                it.editReply({ embeds: [embed] });
+            } else it.editReply("❌ Echec extraction.");
+        }
 
-    if (sub === 'bots') {
-        const pin = it.options.getString('pin');
-        const name = it.options.getString('name');
-        const count = it.options.getInteger('nombre') || 5;
-        it.reply({ content: `🤖 Tentative d'injection de ${count} bots sur ${pin}...`, ephemeral: true });
-        startBotJoiner(pin, name, count);
+        if (sub === 'scan') {
+            await it.deferReply();
+            const img = options.getAttachment('image');
+            if (!img.contentType.startsWith('image/')) return it.editReply("❌ Image requise.");
+
+            try {
+                console.log("👁️ [OCR] Init Worker...");
+                
+                // --- FIX CRITIQUE RENDER ---
+                // On force le cache dans /tmp car / est en lecture seule sur certains conteneurs
+                // et on désactive le logging verbeux pour gagner de la RAM
+                const worker = await Tesseract.createWorker('eng', 1, {
+                    cachePath: '/tmp',
+                    logger: m => { if(m.status === 'recognizing text' && m.progress % 0.2 === 0) console.log(`[OCR] ${Math.round(m.progress*100)}%`); }
+                });
+                
+                const ret = await worker.recognize(img.url);
+                const text = ret.data.text;
+                await worker.terminate(); // Libération immédiate RAM
+
+                const uuidMatch = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+                const pinMatch = text.match(/\b\d{6,7}\b/);
+
+                const embed = new EmbedBuilder().setTitle("👁️ SCAN RESULT").setColor(0x8b5cf6);
+                if (uuidMatch) embed.addFields({ name: '✅ UUID', value: `\`${uuidMatch[0]}\`` });
+                else if (pinMatch) embed.addFields({ name: '⚠️ PIN', value: `\`${pinMatch[0]}\`` });
+                else embed.setDescription("❌ Rien trouvé. Essayez de rogner l'image.");
+                
+                it.editReply({ embeds: [embed] });
+            } catch (e) {
+                console.error("OCR ERROR:", e);
+                it.editReply(`❌ Erreur OCR (Voir logs /ping): ${e.message}`);
+            }
+        }
+
+        if (sub === 'raid') {
+            const count = Math.min(options.getInteger('count'), 80);
+            it.reply({ content: `🚀 RAID: ${count} bots sur ${options.getString('pin')}`, ephemeral: true });
+            for(let i=0; i<count; i++) {
+                setTimeout(() => {
+                    const b = new Kahoot();
+                    b.join(options.getString('pin'), `${options.getString('name')}${i}`).catch(()=>{});
+                    b.on("Joined", () => { if(Math.random()>0.5) b.answer(Math.floor(Math.random()*4)); });
+                }, i * 150);
+            }
+        }
     }
 });
 
-app.listen(port, () => console.log(`🌍 SERVER ACTIVE SUR PORT : ${port}`));
-client.login(process.env.DISCORD_TOKEN);
+// ==================================================================
+// 3. API & INJECTOR V3 (Optimized)
+// ==================================================================
+app.get('/api/raw/:uuid', async (req, res) => {
+    try {
+        const r = await axios.get(`https://play.kahoot.it/rest/kahoots/${req.params.uuid}`);
+        const d = r.data.questions.map(q => ({
+            q: q.question ? q.question.replace(/<[^>]*>/g,'') : "Media",
+            a: q.choices.find(c=>c.correct)?.answer.replace(/<[^>]*>/g,'') || "??",
+        }));
+        res.json(d);
+    } catch(e) { res.status(500).json({error: "Erreur API"}); }
+});
 
+app.get('/payload.js', (req, res) => {
+    const host = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    res.type('.js').send(`
+    (function(){
+        if(window.ELITE_V4) return; window.ELITE_V4=true;
+        const ui=document.createElement('div');
+        ui.innerHTML=\`<div style="position:fixed;bottom:10px;right:10px;width:250px;background:#000;border:1px solid #0f0;color:#0f0;padding:10px;font-family:monospace;z-index:999999;border-radius:5px;">
+        <b>ELITE V4</b> <span id="st">IDLE</span><br>
+        <input id="inp" placeholder="UUID" style="background:#222;border:none;color:#fff;width:100%;margin:5px 0;">
+        <button id="btn" style="width:100%;cursor:pointer;background:#0f0;color:#000;border:none;">LOAD</button>
+        <div id="ans" style="margin-top:10px;font-size:14px;color:#fff;"></div>
+        </div>\`;
+        document.body.appendChild(ui);
+        
+        let d=[],i=0;
+        const u=ui.querySelector.bind(ui);
+        
+        u('#btn').onclick=async()=>{
+            u('#st').innerText="LOADING...";
+            try{
+                let v=u('#inp').value.match(/[0-9a-f-]{36}/);
+                if(!v) throw new Error("UUID Invalide");
+                const r=await fetch('${host}/api/raw/'+v[0]);
+                d=await r.json();
+                u('#st').innerText="READY ("+d.length+")";
+                render();
+                setInterval(()=>{
+                    const c=document.querySelector('[data-functional-selector="question-index-counter"]');
+                    if(c){const n=parseInt(c.innerText)-1;if(!isNaN(n)&&n!=i){i=n;render();}}
+                },800);
+            }catch(e){u('#st').innerText="ERR";alert(e.message);}
+        };
+        
+        const render=()=>{
+            if(!d[i])return;
+            u('#ans').innerHTML=\`Q\${i+1}: \${d[i].q.substring(0,20)}...<br><b style="font-size:16px;color:#0f0">\${d[i].a}</b>\`;
+            document.querySelectorAll('[data-functional-selector^="answer-card"]').forEach(c=>{
+                c.style.opacity=c.innerText.includes(d[i].a.substring(0,5))?"1":"0.2";
+            });
+        };
+    })();`);
+});
+
+app.listen(PORT, () => {
+    console.log(`🌍 CORE ONLINE ON ${PORT}`);
+    // Check Modules
+    try { require('tesseract.js'); console.log("✅ MODULE: Tesseract OK"); } catch(e) { console.error("❌ MISSING: Tesseract"); }
+    try { require('kahoot.js-updated'); console.log("✅ MODULE: Kahoot OK"); } catch(e) { console.error("❌ MISSING: Kahoot"); }
+});
+
+client.login(process.env.DISCORD_TOKEN);
