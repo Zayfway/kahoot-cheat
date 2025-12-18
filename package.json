@@ -1,18 +1,22 @@
 {
-  "name": "kahoot-ultimate-bot",
-  "version": "1.0.0",
-  "description": "Bot Kahoot Ultimate avec Interface Web et Injection",
+  "name": "kahoot-elite-final-sin",
+  "version": "4.0.0",
+  "description": "STI2D Project - Network Analysis Tool",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "axios": "^1.6.7",
     "express": "^4.18.2",
-    "dotenv": "^16.4.1"
+    "cors": "^2.8.5",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "kahoot.js-updated": "^2.3.2",
+    "tesseract.js": "^5.0.4",
+    "systeminformation": "^5.21.22"
   },
   "engines": {
-    "node": ">=16.9.0"
+    "node": ">=18.0.0"
   }
 }
