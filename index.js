@@ -1,7 +1,7 @@
 /**
- * ⚡ KAHOOT HACK ELITE - EDITION SIN PRO (V2.1 STABLE)
+ * ⚡ KAHOOT HACK ELITE - EDITION SIN PRO (V2.2 FINAL)
  * Projet STI2D - Optimisé pour Render (512MB RAM)
- * Fix: Correction du crash "Stack Overflow" sur les logs
+ * Fix: Logs sécurisés & Descriptions obligatoires Discord v14
  */
 
 require('dotenv').config();
@@ -19,18 +19,18 @@ const port = process.env.PORT || 3000;
 // ==================================================================
 const logsBuffer = [];
 
-// Fonction unique pour gérer les logs Discord + Render
+// On n'écrase PAS console.log, on utilise une fonction dédiée
 function safeLog(source, message) {
-    // 1. On formatte le message
     const timestamp = new Date().toLocaleTimeString('fr-FR');
-    const cleanMsg = (typeof message === 'object') ? JSON.stringify(message) : message;
-    const logLine = `[${timestamp}] [${source}] ${cleanMsg}`;
+    // Si le message est un objet (erreur), on le stringify
+    const textMsg = (typeof message === 'object') ? JSON.stringify(message, null, 2) : message;
+    const logLine = `[${timestamp}] [${source}] ${textMsg}`;
 
-    // 2. On ajoute au buffer pour Discord (Max 50 lignes)
+    // 1. Stockage mémoire pour Discord (Max 50 lignes)
     logsBuffer.push(logLine);
     if (logsBuffer.length > 50) logsBuffer.shift();
 
-    // 3. On écrit dans la console Render SANS utiliser de fonction surchargée
+    // 2. Écriture directe dans le flux système (évite les boucles infinies)
     process.stdout.write(logLine + '\n'); 
 }
 
@@ -38,7 +38,6 @@ function safeLog(source, message) {
 // 1. CONFIGURATION & ANTI-SLEEP
 // ==================================================================
 const scriptsCache = new Map();
-const quizDataState = new Map();
 const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
 
 // Ping toutes les 2 minutes pour garder Render éveillé
@@ -66,7 +65,6 @@ async function startSocketBots(pin, baseName, count) {
         });
 
         kBot.on("Disconnect", (reason) => {
-            // On ignore les déconnexions "normales" de fin de quiz
             if(reason !== "Quiz Locked" && reason !== "Brrr! The quiz has ended.") {
                 safeLog('BOT-NET', `❌ Bot ${botName} déconnecté: ${reason}`);
             }
@@ -84,7 +82,8 @@ async function solvePin(pin) {
     safeLog('RESOLVER', `Scan du PIN ${pin}...`);
     return new Promise((resolve) => {
         const client = new Kahoot();
-        const timeout = setTimeout(() => { client.leave(); resolve(null); }, 4000);
+        // Timeout de 5 secondes max
+        const timeout = setTimeout(() => { client.leave(); resolve(null); }, 5000);
         
         client.on("Joined", () => {
             const uuid = client.quiz ? client.quiz.uuid : null;
@@ -101,33 +100,50 @@ async function solvePin(pin) {
 // ==================================================================
 // 3. SERVEUR WEB (PAYLOAD)
 // ==================================================================
-app.get('/', (req, res) => res.send('KAHOOT ELITE V2.1 ONLINE'));
+app.get('/', (req, res) => res.send('KAHOOT ELITE V2.2 ONLINE'));
 
 app.get('/copy/:id', (req, res) => {
     const entry = scriptsCache.get(req.params.id);
     if (!entry) return res.status(404).send("EXPIRED");
-    // Payload simplifié pour injection
     const json = JSON.stringify(entry.data);
+    // Injection JS
     const payload = `(function(){window.kdat=${json};console.log('INJECTED');alert('HACK LOADED: '+window.kdat.length+' Q');})();`;
     const loader = `eval(decodeURIComponent(escape(window.atob('${Buffer.from(payload).toString('base64')}'))))`;
     res.send(loader);
 });
 
 // ==================================================================
-// 4. DISCORD BOT
+// 4. DISCORD BOT (COMMANDES CORRIGÉES)
 // ==================================================================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// CORRECTION MAJEURE ICI : Ajout de .setDescription() PARTOUT
 const commands = [
     new SlashCommandBuilder().setName('kahoot').setDescription('Elite Menu')
-        .addSubcommand(s => s.setName('solve').setDescription('Récupérer UUID via PIN').addStringOption(o=>o.setName('pin').setRequired(true)))
-        .addSubcommand(s => s.setName('bots').setDescription('Lancer les bots').addStringOption(o=>o.setName('pin').setRequired(true)).addStringOption(o=>o.setName('name').setRequired(true)).addIntegerOption(o=>o.setName('nombre').setRequired(false)))
+        .addSubcommand(s => s.setName('solve').setDescription('Récupérer UUID via PIN')
+            .addStringOption(o=>o.setName('pin').setDescription('Le PIN du jeu').setRequired(true)))
+        
+        .addSubcommand(s => s.setName('bots').setDescription('Lancer les bots')
+            .addStringOption(o=>o.setName('pin').setDescription('PIN du jeu').setRequired(true))
+            .addStringOption(o=>o.setName('name').setDescription('Nom des bots').setRequired(true))
+            .addIntegerOption(o=>o.setName('nombre').setDescription('Nombre de bots (max 50)').setRequired(false)))
+        
         .addSubcommand(s => s.setName('logs').setDescription('Voir les logs Render')),
-    new SlashCommandBuilder().setName('ping').setDescription('Status')
+    
+    new SlashCommandBuilder().setName('ping').setDescription('Voir la latence')
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-(async () => { try { await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands }); } catch(e){} })();
+
+(async () => { 
+    try { 
+        safeLog('SYSTEM', 'Mise à jour des commandes Discord...');
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+        safeLog('SYSTEM', 'Commandes chargées avec succès !');
+    } catch(e) {
+        safeLog('ERROR', `Erreur commandes: ${e.message}`);
+    } 
+})();
 
 async function handleSendQuiz(uuid, interaction) {
     try {
@@ -148,7 +164,7 @@ async function handleSendQuiz(uuid, interaction) {
         interaction.editReply({ embeds: [embed] });
         safeLog('CMD', `Hack généré pour ${uuid}`);
     } catch (e) {
-        interaction.editReply("❌ Erreur UUID.");
+        interaction.editReply("❌ Erreur UUID ou Quiz privé.");
     }
 }
 
@@ -183,7 +199,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-app.listen(port, () => safeLog('SYSTEM', `Port ${port} OK`));
+app.listen(port, () => safeLog('SYSTEM', `Serveur démarré Port ${port}`));
 client.login(process.env.DISCORD_TOKEN);
 
 
