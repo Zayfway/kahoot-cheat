@@ -1,7 +1,7 @@
 {
   "name": "kahoot-elite-v6-sin",
   "version": "6.0.0",
-  "description": "STI2D SIN Final Project",
+  "description": "STI2D SIN Final Project - Network Analysis Tool",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
